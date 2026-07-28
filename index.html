@@ -2145,7 +2145,7 @@ ctx.fillText(item.count,sx+32,sy+32);
 
 // Update inv panel position
 invPanel.x=(canvas.width-480)/2;
-invPanel.y=(canvas.height-240)/2;
+invPanel.y=(canvas.height-200)/2;
 invPanel.hotX=(canvas.width-360)/2;
 invPanel.hotY=canvas.height-50;
 
@@ -2153,9 +2153,9 @@ invPanel.hotY=canvas.height-50;
 if(inventoryOpen){
 let bx=invPanel.x-10,by=invPanel.y-10;// box top-left
 ctx.fillStyle='rgba(0,0,0,0.85)';
-ctx.fillRect(bx,by,510,240);
+ctx.fillRect(bx,by,510,190);
 ctx.strokeStyle='#888';ctx.lineWidth=2;
-ctx.strokeRect(bx,by,510,240);
+ctx.strokeRect(bx,by,510,190);
 // Content offset inside box
 let ox=bx+10,oy=by+10;
 ctx.fillStyle='#fff';ctx.font='14px monospace';ctx.textAlign='left';
@@ -2175,9 +2175,9 @@ if(item.count>1){ctx.fillStyle='#fff';ctx.font='10px monospace';ctx.textAlign='r
 }
 }}
 
-// Armor slots (right side of box, aligned with grid)
+// Armor slots (right side, aligned with grid rows using same 36px spacing)
 ['head','chest','legs'].forEach((s,i)=>{
-let sx=ox+380,sy=oy+20+i*40;
+let sx=ox+400,sy=oy+20+i*36;
 ctx.fillStyle='rgba(80,80,80,0.8)';
 ctx.fillRect(sx,sy,36,36);
 ctx.strokeStyle='#aaa';ctx.lineWidth=1;ctx.strokeRect(sx,sy,36,36);
@@ -2186,11 +2186,11 @@ ctx.fillText(['Head:','Chest:','Legs:'][i],sx-40,sy+10);
 if(player.armor[s]){drawItemIcon(sx+6,sy+6,player.armor[s].id,16);}
 });
 
-// Sort button
+// Sort button (aligned with last grid row)
 ctx.fillStyle='rgba(100,100,100,0.8)';
-ctx.fillRect(ox+380,oy+140,80,24);
+ctx.fillRect(ox+400,oy+128,80,34);
 ctx.fillStyle='#fff';ctx.font='11px monospace';ctx.textAlign='center';
-ctx.fillText('Sort',ox+420,oy+156);
+ctx.fillText('Sort',ox+440,oy+148);
 }
 
 // Crafting panel
