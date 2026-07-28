@@ -2153,11 +2153,11 @@ invPanel.hotY=canvas.height-50;
 if(inventoryOpen){
 let bx=invPanel.x-10,by=invPanel.y-10;// box top-left
 ctx.fillStyle='rgba(0,0,0,0.85)';
-ctx.fillRect(bx,by,510,190);
+ctx.fillRect(bx,by,510,200);
 ctx.strokeStyle='#888';ctx.lineWidth=2;
-ctx.strokeRect(bx,by,510,190);
+ctx.strokeRect(bx,by,510,200);
 // Content offset inside box
-let ox=bx+10,oy=by+10;
+let ox=bx+10,oy=by+20;
 ctx.fillStyle='#fff';ctx.font='14px monospace';ctx.textAlign='left';
 ctx.fillText('Inventory (E to close)',ox,oy);
 
