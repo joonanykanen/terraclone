@@ -1987,7 +1987,7 @@ let color=def.name.includes('Diamond')?'#0ff':def.name.includes('Gold')?'#ffd700
 let handleColor=color==='#8B6914'?'#654':'#888';
 // Sword pivot point at player's hand
 let pivotX=sx+player.w/2+player.swingFacing*8;
-let pivotY=sy+8+bob;
+let pivotY=sy+12+bob;
 let bladeLen=def.damage>25?32:(def.damage>12?26:20);
 if(player.swinging){
 let swingP=player.swingProgress;
@@ -2012,9 +2012,9 @@ ctx.restore();
 }else{
 // Idle sword - held at side
 ctx.fillStyle=color;
-ctx.fillRect(armX,sy+6+bob,10,2);
+ctx.fillRect(armX,sy+10+bob,10,2);
 ctx.fillStyle=handleColor;
-ctx.fillRect(armX+(player.facing>0?-2:8),sy+4+bob,4,6);
+ctx.fillRect(armX+(player.facing>0?-2:8),sy+8+bob,4,6);
 }
 }else if(def.type==='pickaxe'){
 let color=def.name.includes('Diamond')?'#0ff':def.name.includes('Gold')?'#ffd700':def.name.includes('Iron')?'#ccc':'#8B6914';
