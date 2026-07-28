@@ -2648,7 +2648,7 @@ ctx.font='bold 32px monospace';
 ctx.fillText('Select Save Slot',canvas.width/2,60);
 
 // Save slot cards
-let cardW=400,cardH=120;
+let cardW=460,cardH=120;
 let cardX=canvas.width/2-cardW/2;
 let cardStartY=100;
 let cardGap=20;
@@ -2669,11 +2669,32 @@ ctx.strokeStyle=isHovered?'#8f8':'#555';
 ctx.lineWidth=isHovered?2:1;
 ctx.strokeRect(cardX,cy,cardW,cardH);
 
-// Slot number
+// Slot number + status indicator
+ctx.textAlign='left';
+if(hasData){
+// Green status dot for active slot
+ctx.beginPath();
+ctx.arc(cardX+12,cy+18,5,0,Math.PI*2);
+ctx.fillStyle='#5f5';
+ctx.fill();
+ctx.fillStyle='rgba(85,255,85,0.15)';
+ctx.fill();
+// Glow effect
+ctx.beginPath();
+ctx.arc(cardX+12,cy+18,7,0,Math.PI*2);
+ctx.strokeStyle='rgba(85,255,85,0.4)';
+ctx.lineWidth=1;
+ctx.stroke();
+} else {
+// Gray status dot for empty slot
+ctx.beginPath();
+ctx.arc(cardX+12,cy+18,5,0,Math.PI*2);
+ctx.fillStyle='#666';
+ctx.fill();
+}
 ctx.fillStyle='#8f8';
 ctx.font='bold 16px monospace';
-ctx.textAlign='left';
-ctx.fillText('Slot '+(i+1),cardX+15,cy+25);
+ctx.fillText('Slot '+(i+1),cardX+24,cy+23);
 
 if(hasData){
 // Show save info
@@ -2691,26 +2712,47 @@ ctx.fillText(`Last played: ${dateStr}`,cardX+15,cy+68);
 ctx.fillStyle='#888';
 ctx.fillText(`HP: ${info.hp||100}/${info.maxHp||100}`,cardX+15,cy+88);
 
-// Play button
-let playBx=cardX+cardW-110,playBy=cy+cardH-40,playBw=55,playBh=32;
+// Play button (right-aligned inside card with padding)
+let btnRightPad=15,btnGap=12;
+let delBx=cardX+cardW-btnRightPad-72,delBy=cy+cardH-42,delBw=72,delBh=32;
+let playBx=delBx-btnGap-72,playBy=cy+cardH-42,playBw=72,playBh=32;
 let playHovered=isMouseInRect(playBx,playBy,playBw,playBh);
 if(playHovered)menuHoverButton=20+i;
 drawButton(playBx,playBy,playBw,playBh,'Play',playHovered);
 
-// Delete button
-let delBx=cardX+cardW-55,delBy=cy+cardH-40,delBw=55,delBh=32;
 let delHovered=isMouseInRect(delBx,delBy,delBw,delBh);
 if(delHovered)menuHoverButton=30+i;
-drawButton(delBx,delBy,delBw,delBh,'Delete',delHovered);
+// Red-tinted delete button on hover
+if(delHovered){
+ctx.fillStyle='rgba(200,60,60,0.9)';
+ctx.fillRect(delBx,delBy,delBw,delBh);
+ctx.strokeStyle='#f66';
+ctx.lineWidth=3;
+ctx.strokeRect(delBx,delBy,delBw,delBh);
+ctx.fillStyle='#fff';
+ctx.font='bold 14px monospace';
+ctx.textAlign='center';
+ctx.fillText('Delete',delBx+delBw/2,delBy+delBh/2+5);
+} else {
+ctx.fillStyle='rgba(50,50,50,0.9)';
+ctx.fillRect(delBx,delBy,delBw,delBh);
+ctx.strokeStyle='#888';
+ctx.lineWidth=2;
+ctx.strokeRect(delBx,delBy,delBw,delBh);
+ctx.fillStyle='#fff';
+ctx.font='bold 14px monospace';
+ctx.textAlign='center';
+ctx.fillText('Delete',delBx+delBw/2,delBy+delBh/2+5);
+}
 }else{
-// Empty slot
+// Empty slot - status text
 ctx.fillStyle='#666';
 ctx.font='14px monospace';
 ctx.textAlign='center';
-ctx.fillText('Empty Slot',cardX+cardW/2,cy+50);
+ctx.fillText('Available',cardX+cardW/2,cy+48);
 
 // New World button
-let newBx=cardX+cardW/2-70,newBy=cy+cardH-42,newBw=140,newBh=32;
+let newBx=cardX+cardW/2-75,newBy=cy+cardH-42,newBw=150,newBh=32;
 let newHovered=isMouseInRect(newBx,newBy,newBw,newBh);
 if(newHovered)menuHoverButton=40+i;
 drawButton(newBx,newBy,newBw,newBh,'New World',newHovered);
@@ -2750,21 +2792,47 @@ let by2=canvas.height/2+5;
 if(isMouseInRect(bx,by2,bw,bh))menuHoverButton=1;
 drawButton(bx,by2,bw,bh,'Save Game (F5)',menuHoverButton===1);
 
-// Save to specific slot buttons
-let slotBtnW=80,slotBtnH=32;
-let slotBtnStartX=canvas.width/2-(SAVE_SLOTS*slotBtnW+(SAVE_SLOTS-1)*10)/2;
-let slotBtnY=canvas.height/2+60;
-ctx.fillStyle='#aaa';ctx.font='12px monospace';ctx.textAlign='center';
-ctx.fillText('Save to slot:',canvas.width/2,slotBtnY-5);
+// Save to specific slot buttons (side by side, same total width as menu buttons)
+let slotGap=4,slotBtnH=44;
+let slotBtnW=(bw-(SAVE_SLOTS-1)*slotGap)/SAVE_SLOTS;
+let slotBtnStartX=bx;
+let slotBtnY=canvas.height/2+65;
+let slotTooltip=null;
 for(let i=0;i<SAVE_SLOTS;i++){
-let sbx=slotBtnStartX+i*(slotBtnW+10);
+let sbx=slotBtnStartX+i*(slotBtnW+slotGap);
 let sHovered=isMouseInRect(sbx,slotBtnY,slotBtnW,slotBtnH);
 if(sHovered)menuHoverButton=10+i;
-drawButton(sbx,slotBtnY,slotBtnW,slotBtnH,'Slot '+(i+1),sHovered);
+let slotHasData=hasSlot(i);
+// Draw button with color-coded border (green = saved, gray = empty)
+ctx.fillStyle=sHovered?(slotHasData?'rgba(60,140,60,0.9)':'rgba(80,80,80,0.9)'):(slotHasData?'rgba(35,45,35,0.9)':'rgba(40,40,40,0.9)');
+ctx.fillRect(sbx,slotBtnY,slotBtnW,slotBtnH);
+ctx.strokeStyle=slotHasData?'#5a5':'#666';
+ctx.lineWidth=2;
+ctx.strokeRect(sbx,slotBtnY,slotBtnW,slotBtnH);
+ctx.fillStyle='#fff';ctx.font='bold 12px monospace';ctx.textAlign='center';
+ctx.fillText('Slot '+(i+1),sbx+slotBtnW/2,slotBtnY+slotBtnH/2+5);
+// Collect tooltip data (drawn after all buttons)
+if(sHovered&&slotHasData){
+let info=getSlotInfo(i);
+let tipLines=['Last saved: '+new Date(info.lastPlayed).toLocaleString()];
+let playTime=formatPlayTime(info.gt||0);
+let timeStr=info.dt&&info.dt<0.5?'Day':'Night';
+tipLines.push('Seed: '+info.seed+' | Time: '+timeStr+' | Play: '+playTime);
+slotTooltip={x:sbx+slotBtnW+10,y:slotBtnY+slotBtnH/2,lines:tipLines};
+}
+}
+// Draw tooltip on top of everything
+if(slotTooltip){
+let tipX=slotTooltip.x,tipY=slotTooltip.y;
+let tipW=bw+20,tipH=slotTooltip.lines.length*16+8;
+ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(tipX,tipY-tipH,tipW,tipH);
+ctx.strokeStyle='#5a5';ctx.lineWidth=1;ctx.strokeRect(tipX,tipY-tipH,tipW,tipH);
+ctx.fillStyle='#ccc';ctx.font='11px monospace';ctx.textAlign='left';
+for(let t=0;t<slotTooltip.lines.length;t++)ctx.fillText(slotTooltip.lines[t],tipX+8,tipY-tipH+14+t*16);
 }
 
 // Main Menu
-let by3=canvas.height/2+110;
+let by3=slotBtnY+slotBtnH+15;
 if(isMouseInRect(bx,by3,bw,bh))menuHoverButton=98;
 drawButton(bx,by3,bw,bh,'Main Menu',menuHoverButton===98);
 }
@@ -2806,7 +2874,7 @@ return;
 return;
 }
 if(menuState==='saveSelect'){
-let cardW=400,cardH=120;
+let cardW=460,cardH=120;
 let cardX=canvas.width/2-cardW/2;
 let cardStartY=100;
 let cardGap=20;
@@ -2815,7 +2883,9 @@ let cy=cardStartY+i*(cardH+cardGap);
 let info=getSlotInfo(i);
 if(info){
 // Play button
-let playBx=cardX+cardW-110,playBy=cy+cardH-40,playBw=55,playBh=32;
+let btnRightPad=15,btnGap=12;
+let delBx=cardX+cardW-btnRightPad-72,delBy=cy+cardH-42,delBw=72,delBh=32;
+let playBx=delBx-btnGap-72,playBy=cy+cardH-42,playBw=72,playBh=32;
 if(mx>=playBx&&mx<=playBx+playBw&&my>=playBy&&my<=playBy+playBh){
 selectedSaveSlot=i;
 if(loadSlot(i)){
@@ -2828,14 +2898,13 @@ notifications[notifications.length-1].time=5;
 return;
 }
 // Delete button
-let delBx=cardX+cardW-55,delBy=cy+cardH-40,delBw=55,delBh=32;
 if(mx>=delBx&&mx<=delBx+delBw&&my>=delBy&&my<=delBy+delBh){
 deleteSlot(i);
 return;
 }
 }else{
 // New World button
-let newBx=cardX+cardW/2-70,newBy=cy+cardH-42,newBw=140,newBh=32;
+let newBx=cardX+cardW/2-75,newBy=cy+cardH-42,newBw=150,newBh=32;
 if(mx>=newBx&&mx<=newBx+newBw&&my>=newBy&&my<=newBy+newBh){
 selectedSaveSlot=i;
 initNewWorld();
@@ -2873,11 +2942,11 @@ notifications[notifications.length-1].time=5;
 return;
 }
 // Save to slot buttons
-let slotBtnW=80,slotBtnH=32;
-let slotBtnStartX=canvas.width/2-(SAVE_SLOTS*slotBtnW+(SAVE_SLOTS-1)*10)/2;
-let slotBtnY=canvas.height/2+60;
+let slotGap=4,slotBtnH=44;
+let slotBtnW=(bw-(SAVE_SLOTS-1)*slotGap)/SAVE_SLOTS;
+let slotBtnStartX=bx,slotBtnY=canvas.height/2+65;
 for(let i=0;i<SAVE_SLOTS;i++){
-let sbx=slotBtnStartX+i*(slotBtnW+10);
+let sbx=slotBtnStartX+i*(slotBtnW+slotGap);
 if(mx>=sbx&&mx<=sbx+slotBtnW&&my>=slotBtnY&&my<=slotBtnY+slotBtnH){
 if(saveSlot(i)){
 addNotification('Game saved to Slot '+(i+1)+'!');
@@ -2887,7 +2956,7 @@ return;
 }
 }
 // Main Menu
-let by3=canvas.height/2+110;
+let by3=slotBtnY+slotBtnH+15;
 if(mx>=bx&&mx<=bx+bw&&my>=by3&&my<=by3+bh){
 menuState='title';
 closePanels();
