@@ -2,6 +2,13 @@
 
 A single-file 2D sandbox game inspired by Terraria.
 
+[![Deploy to GitHub Pages](https://github.com/joonanykanen/terraria-clone/actions/workflows/deploy.yml/badge.svg)](https://github.com/joonanykanen/terraria-clone/actions/workflows/deploy.yml)
+
+## Play
+
+- **Online:** [https://joonanykanen.github.io/terraria-clone/](https://joonanykanen.github.io/terraria-clone/)
+- **Local:** Download [`index.html`](index.html) and open it in any modern browser.
+
 ![Terraria Clone](screenshot.png)
 
 **Controls:** WASD/Arrows to move, Space to jump, Left-click to mine/attack, Right-click to place blocks. E for inventory, R for crafting, Q to use items, 1-0 for hotbar, M to toggle music.
