@@ -2097,11 +2097,12 @@ ctx.fillRect(p.x-camera.x,p.y-camera.y,p.size,p.size);
 });
 ctx.globalAlpha=1;
 
-// Tile highlight
+// Tile highlight (only if within reach range)
 {
 let wx=mouse.x+camera.x,wy=mouse.y+camera.y;
 let tx=wx/TILE|0,ty=wy/TILE|0;
-if(tx>=0&&tx<WORLD_W&&ty>=0&&ty<WORLD_H){
+let dist=Math.sqrt((wx-player.x-player.w/2)**2+(wy-player.y-player.h/2)**2);
+if(dist<TILE*6&&tx>=0&&tx<WORLD_W&&ty>=0&&ty<WORLD_H){
 ctx.strokeStyle='rgba(255,255,255,0.5)';
 ctx.lineWidth=1;
 ctx.strokeRect(tx*TILE-camera.x,ty*TILE-camera.y,TILE,TILE);
