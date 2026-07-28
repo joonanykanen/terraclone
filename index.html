@@ -558,35 +558,48 @@ function midiToFreq(m){return 440*Math.pow(2,(m-69)/12);}
 
 const MUSIC_PATTERNS={
 forest_day:{
-root:60,// C4 bpm:128,
+root:48,// C3
+bpm:120,
 mode:'major',
-chords:[0,3,5,3],// I - IV - V - IV (C F G F)
+chords:[0,3,5,4,0,3,10,5],// I - IV - V - vi - I - IV - III - V (cheerful progression)
 chordLen:4,// 4 beats per chord
-melody:[// Upbouncy C-major line with leaps and repeated notes (classic chiptune style)
-{m:64,d:2,v:0.08,w:'square'},// E4
-{m:67,d:2,v:0.08,w:'square'},// G4
-{m:72,d:2,v:0.08,w:'square'},// C5
-{m:72,d:1,v:0.08,w:'square'},// C5
-{m:70,d:1,v:0.08,w:'square'},// B4
-{m:67,d:2,v:0.08,w:'square'},// G4
-{m:72,d:2,v:0.08,w:'square'},// C5
-{m:74,d:1,v:0.08,w:'square'},// D5
-{m:77,d:1,v:0.08,w:'square'},// E5
-{m:79,d:2,v:0.08,w:'square'},// F5
-{m:77,d:1,v:0.08,w:'square'},// E5
-{m:74,d:1,v:0.08,w:'square'},// D5
-{m:72,d:2,v:0.08,w:'square'},// C5
-{m:72,d:1,v:0.08,w:'square'},// C5
-{m:70,d:1,v:0.08,w:'square'},// B4
-{m:67,d:2,v:0.08,w:'square'},// G4
-{m:72,d:4,v:0.08,w:'square'},// C5 (hold)
-{m:-1,d:2},// rest
+melody:[// Bright, bouncy Terraria-style daytime melody with syncopation
+{m:72,d:1,v:0.07,w:'triangle'},// C5
+{m:74,d:1,v:0.07,w:'triangle'},// D5
+{m:76,d:1,v:0.07,w:'triangle'},// E5
+{m:79,d:1,v:0.07,w:'triangle'},// G5
+{m:77,d:2,v:0.07,w:'triangle'},// F5
+{m:74,d:2,v:0.07,w:'triangle'},// D5
+{m:76,d:1,v:0.07,w:'triangle'},// E5
+{m:79,d:1,v:0.07,w:'triangle'},// G5
+{m:81,d:2,v:0.07,w:'triangle'},// A5
+{m:79,d:2,v:0.07,w:'triangle'},// G5
+{m:76,d:1,v:0.07,w:'triangle'},// F5
+{m:74,d:1,v:0.07,w:'triangle'},// D5
+{m:72,d:2,v:0.07,w:'triangle'},// C5
+{m:76,d:1,v:0.07,w:'triangle'},// E5
+{m:79,d:1,v:0.07,w:'triangle'},// G5
+{m:76,d:2,v:0.07,w:'triangle'},// E5
+{m:72,d:2,v:0.07,w:'triangle'},// C5
+{m:74,d:1,v:0.07,w:'triangle'},// D5
+{m:76,d:1,v:0.07,w:'triangle'},// E5
+{m:79,d:2,v:0.07,w:'triangle'},// G5
+{m:77,d:2,v:0.07,w:'triangle'},// F5
+{m:74,d:2,v:0.07,w:'triangle'},// D5
+{m:72,d:2,v:0.07,w:'triangle'},// C5
+{m:76,d:1,v:0.07,w:'triangle'},// E5
+{m:79,d:1,v:0.07,w:'triangle'},// G5
+{m:81,d:2,v:0.07,w:'triangle'},// A5
+{m:79,d:2,v:0.07,w:'triangle'},// G5
+{m:76,d:1,v:0.07,w:'triangle'},// F5
+{m:74,d:1,v:0.07,w:'triangle'},// D5
+{m:72,d:2,v:0.07,w:'triangle'},// C5
 {m:-1,d:2},// rest
 ],
-arp:[0,12,19,24,0,12,19,24],// root, octave, 5th+oct, octave+oct (bouncy arp)
-arpSpeed:0.5,arpVol:0.03,arpWave:'square',
-bass:[0,0,0,0,7,7,7,7,12,12,12,12,7,7,7,7],// root notes per beat
-bassVol:0.06,bassWave:'triangle',
+arp:[0,4,7,12,7,4,0,12,0,4,7,12,7,4,0,12],// flowing arpeggio pattern
+arpSpeed:0.5,arpVol:0.04,arpWave:'triangle',
+bass:[0,0,0,0,0,0,0,0,7,7,7,7,7,7,7,7,9,9,9,9,9,9,9,9,12,12,12,12,12,12,12,12,7,7,7,7],// walking bass with more movement
+bassVol:0.05,bassWave:'triangle',
 padVol:0,
 },
 forest_night:{
@@ -621,34 +634,45 @@ padVol:0.025,padWave:'sine',// soft ambient pad
 },
 desert_day:{
 root:59,// B
-bpm:120,
+bpm:116,
 mode:'pentatonic',
-chords:[0,2,7,5],// I - II - bVII - bVI (B D# A# G#)
+chords:[0,7,5,2,0,7,10,5],// I - bVII - bVI - II - I - bVII - III - bVI (desert wanderer)
 chordLen:4,
-melody:[// Desert wanderer feel - pentatonic, flowing
-{m:62,d:1,v:0.07,w:'square'},// D#4
-{m:64,d:1,v:0.07,w:'square'},// F4
-{m:67,d:2,v:0.07,w:'square'},// G#4
-{m:69,d:1,v:0.07,w:'square'},// A#4
-{m:67,d:1,v:0.07,w:'square'},// G#4
-{m:64,d:2,v:0.07,w:'square'},// F4
-{m:62,d:1,v:0.07,w:'square'},// D#4
-{m:60,d:1,v:0.07,w:'square'},// B3
-{m:62,d:2,v:0.07,w:'square'},// D#4
-{m:64,d:1,v:0.07,w:'square'},// F4
-{m:67,d:1,v:0.07,w:'square'},// G#4
-{m:69,d:2,v:0.07,w:'square'},// A#4
-{m:71,d:1,v:0.07,w:'square'},// C5
-{m:69,d:1,v:0.07,w:'square'},// A#4
-{m:67,d:2,v:0.07,w:'square'},// G#4
-{m:64,d:2,v:0.07,w:'square'},// F4
-{m:62,d:4,v:0.07,w:'square'},// D#4 (hold)
-{m:-1,d:2},// rest
+melody:[// Warm desert melody - flowing pentatonic with rhythmic variety
+{m:71,d:1,v:0.07,w:'triangle'},// D#5
+{m:69,d:1,v:0.07,w:'triangle'},// C#5
+{m:67,d:1,v:0.07,w:'triangle'},// B4
+{m:64,d:1,v:0.07,w:'triangle'},// G#4
+{m:67,d:2,v:0.07,w:'triangle'},// B4
+{m:69,d:2,v:0.07,w:'triangle'},// C#5
+{m:71,d:1,v:0.07,w:'triangle'},// D#5
+{m:74,d:1,v:0.07,w:'triangle'},// F#5
+{m:71,d:2,v:0.07,w:'triangle'},// D#5
+{m:69,d:2,v:0.07,w:'triangle'},// C#5
+{m:67,d:1,v:0.07,w:'triangle'},// B4
+{m:64,d:1,v:0.07,w:'triangle'},// G#4
+{m:67,d:2,v:0.07,w:'triangle'},// B4
+{m:69,d:1,v:0.07,w:'triangle'},// C#5
+{m:71,d:1,v:0.07,w:'triangle'},// D#5
+{m:74,d:2,v:0.07,w:'triangle'},// F#5
+{m:71,d:2,v:0.07,w:'triangle'},// D#5
+{m:69,d:1,v:0.07,w:'triangle'},// C#5
+{m:67,d:1,v:0.07,w:'triangle'},// B4
+{m:64,d:2,v:0.07,w:'triangle'},// G#4
+{m:67,d:1,v:0.07,w:'triangle'},// B4
+{m:69,d:1,v:0.07,w:'triangle'},// C#5
+{m:71,d:2,v:0.07,w:'triangle'},// D#5
+{m:69,d:2,v:0.07,w:'triangle'},// C#5
+{m:67,d:1,v:0.07,w:'triangle'},// B4
+{m:64,d:1,v:0.07,w:'triangle'},// G#4
+{m:67,d:2,v:0.07,w:'triangle'},// B4
+{m:69,d:1,v:0.07,w:'triangle'},// C#5
+{m:71,d:2,v:0.07,w:'triangle'},// D#5
 {m:-1,d:2},// rest
 ],
-arp:[0,12,16,24,0,12,16,24],
-arpSpeed:0.5,arpVol:0.025,arpWave:'square',
-bass:[0,0,0,0,0,0,0,0,2,2,2,2,2,2,2,2],
+arp:[0,7,12,19,12,7,0,12,0,7,12,19,12,7,0,12],// pentatonic arpeggio flow
+arpSpeed:0.5,arpVol:0.035,arpWave:'triangle',
+bass:[0,0,0,0,0,0,0,0,7,7,7,7,7,7,7,7,5,5,5,5,5,5,5,5,2,2,2,2,2,2,2,2,7,7,7,7],// walking bass
 bassVol:0.05,bassWave:'triangle',
 padVol:0,
 },
@@ -686,34 +710,45 @@ padVol:0.02,padWave:'sine',
 },
 snow_day:{
 root:64,// E4
-bpm:112,
+bpm:116,
 mode:'major',
-chords:[0,3,5,3],// I - IV - V - IV
+chords:[0,3,5,4,0,3,10,5],// I - IV - V - vi - I - IV - III - V (bright progression)
 chordLen:4,
-melody:[// Snowy day - bright, twinkling
-{m:76,d:1,v:0.07,w:'square'},// B4
-{m:74,d:1,v:0.07,w:'square'},// A4
-{m:72,d:1,v:0.07,w:'square'},// G4
-{m:74,d:1,v:0.07,w:'square'},// A4
-{m:76,d:2,v:0.07,w:'square'},// B4
-{m:79,d:2,v:0.07,w:'square'},// D5
-{m:77,d:1,v:0.07,w:'square'},// C5
-{m:74,d:1,v:0.07,w:'square'},// A4
-{m:72,d:2,v:0.07,w:'square'},// G4
-{m:74,d:1,v:0.07,w:'square'},// A4
-{m:76,d:1,v:0.07,w:'square'},// B4
-{m:79,d:2,v:0.07,w:'square'},// D5
-{m:81,d:1,v:0.07,w:'square'},// E5
-{m:79,d:1,v:0.07,w:'square'},// D5
-{m:77,d:2,v:0.07,w:'square'},// C5
-{m:76,d:2,v:0.07,w:'square'},// B4
-{m:74,d:4,v:0.07,w:'square'},// A4 (hold)
-{m:-1,d:2},// rest
+melody:[// Snowy day - bright, twinkling with cheerful bounces
+{m:76,d:1,v:0.07,w:'triangle'},// B4
+{m:79,d:1,v:0.07,w:'triangle'},// D5
+{m:81,d:1,v:0.07,w:'triangle'},// E5
+{m:79,d:1,v:0.07,w:'triangle'},// D5
+{m:76,d:2,v:0.07,w:'triangle'},// B4
+{m:74,d:2,v:0.07,w:'triangle'},// A4
+{m:76,d:1,v:0.07,w:'triangle'},// B4
+{m:79,d:1,v:0.07,w:'triangle'},// D5
+{m:81,d:2,v:0.07,w:'triangle'},// E5
+{m:79,d:2,v:0.07,w:'triangle'},// D5
+{m:76,d:1,v:0.07,w:'triangle'},// B4
+{m:74,d:1,v:0.07,w:'triangle'},// A4
+{m:72,d:2,v:0.07,w:'triangle'},// G4
+{m:74,d:1,v:0.07,w:'triangle'},// A4
+{m:76,d:1,v:0.07,w:'triangle'},// B4
+{m:79,d:2,v:0.07,w:'triangle'},// D5
+{m:76,d:2,v:0.07,w:'triangle'},// B4
+{m:74,d:1,v:0.07,w:'triangle'},// A4
+{m:72,d:1,v:0.07,w:'triangle'},// G4
+{m:74,d:2,v:0.07,w:'triangle'},// A4
+{m:76,d:1,v:0.07,w:'triangle'},// B4
+{m:79,d:1,v:0.07,w:'triangle'},// D5
+{m:81,d:2,v:0.07,w:'triangle'},// E5
+{m:79,d:2,v:0.07,w:'triangle'},// D5
+{m:76,d:1,v:0.07,w:'triangle'},// B4
+{m:74,d:1,v:0.07,w:'triangle'},// A4
+{m:72,d:2,v:0.07,w:'triangle'},// G4
+{m:74,d:1,v:0.07,w:'triangle'},// A4
+{m:76,d:2,v:0.07,w:'triangle'},// B4
 {m:-1,d:2},// rest
 ],
-arp:[0,12,19,24,0,12,19,24],
-arpSpeed:0.4,arpVol:0.025,arpWave:'square',
-bass:[0,0,0,0,7,7,7,7,12,12,12,12,7,7,7,7],
+arp:[0,4,7,12,7,4,0,12,0,4,7,12,7,4,0,12],// flowing arpeggio pattern
+arpSpeed:0.5,arpVol:0.04,arpWave:'triangle',
+bass:[0,0,0,0,0,0,0,0,7,7,7,7,7,7,7,7,9,9,9,9,9,9,9,9,12,12,12,12,12,12,12,12,7,7,7,7],// walking bass with more movement
 bassVol:0.05,bassWave:'triangle',
 padVol:0,
 },
