@@ -1263,6 +1263,10 @@ item.count--;
 if(item.count<=0)player.inventory[slot]=null;
 playSFX('item_use');
 addNotification('Used '+def.name);
+}else if(def.type==='summon'){
+item.count--;
+if(item.count<=0)player.inventory[slot]=null;
+summonKingSlime();
 }
 }
 }
@@ -1619,13 +1623,6 @@ return false;
 }
 
 function summonKingSlime(){
-let slot=-1;
-for(let i=0;i<player.inventory.length;i++){
-if(player.inventory[i]&&player.inventory[i].id===T.SLIME_CROWN){slot=i;break;}
-}
-if(slot>=0){
-player.inventory[slot].count--;
-if(player.inventory[slot].count<=0)player.inventory[slot]=null;
 entities.push({
 type:'king_slime',
 x:player.x+(Math.random()>.5?100:-100),y:player.y-60,
@@ -1634,9 +1631,7 @@ hp:500,maxHp:500,damage:20,
 jumpTimer:0,jumpInterval:1.5,
 knockbackX:0,knockbackY:0,alive:true,onGround:false
 });
-playSFX('item_use');
 addNotification('King Slime summoned!');
-}
 }
 
 // ===== PARTICLES =====
@@ -2380,11 +2375,6 @@ ensureMusic();
 notifications.forEach(n=>n.time-=dt);
 notifications=notifications.filter(n=>n.time>0);
 
-// Summon King Slime check
-if(keys['KeyU']){
-keys['KeyU']=false;
-summonKingSlime();
-}
 }
 
 // ===== INIT =====
@@ -2452,7 +2442,7 @@ ctx.fillStyle='#aaa';
 ctx.font='12px monospace';
 ctx.fillText('WASD: Move | Space: Jump | LClick: Mine | RClick: Place',canvas.width/2,canvas.height/2+60);
 ctx.fillText('E: Inventory | R: Crafting | Q: Use Item | M: Music Toggle',canvas.width/2,canvas.height/2+80);
-ctx.fillText('1-0: Hotbar | U: Summon Boss',canvas.width/2,canvas.height/2+100);
+ctx.fillText('1-0: Hotbar',canvas.width/2,canvas.height/2+100);
 
 ctx.fillStyle='#666';
 ctx.font='10px monospace';
