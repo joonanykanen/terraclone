@@ -2247,8 +2247,10 @@ ctx.textAlign='center';
 for(let i=0;i<notifications.length;i++){
 let n=notifications[i];
 ctx.globalAlpha=Math.min(1,n.time);
+ctx.fillStyle='#fff';ctx.font='12px monospace';
+let tw=ctx.measureText(n.text).width+20;
 ctx.fillStyle='rgba(0,0,0,0.6)';
-ctx.fillRect(canvas.width/2-100,60+i*22,200,20);
+ctx.fillRect(canvas.width/2-tw/2,60+i*22,tw,20);
 ctx.fillStyle='#fff';ctx.font='12px monospace';
 ctx.fillText(n.text,canvas.width/2,75+i*22);
 }
@@ -2404,10 +2406,8 @@ player.inventory[player.inventory.findIndex(i=>!i)]={id:T.TORCH,count:15};
 player.inventory[player.inventory.findIndex(i=>!i)]={id:T.HEAL_POTION,count:2};
 
 initAudio();
-addNotification('Welcome! Wood Sword & Pickaxe in your hotbar.');
-addNotification('Press E for inventory, R for crafting, Q to use potions.');
-// Make welcome notifications last longer
-notifications.forEach(n=>{if(n.text.includes('Welcome'))n.time=8;});
+addNotification('Welcome to Terraria Clone!');
+notifications[notifications.length-1].time=8;
 }
 
 init();
