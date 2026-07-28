@@ -51,6 +51,199 @@ let gameTime=0;
 let notifications=[];
 let gamePaused=false;
 
+// ===== SAVE SYSTEM =====
+const SAVE_SLOTS=3;
+const SAVE_KEY='terraria_clone_saves';
+let menuState='title'; // title, saveSelect, playing, paused
+let selectedSaveSlot=-1;
+let menuHoverButton=-1;
+
+// ===== COMPRESSION =====
+// Sparse world encoding is already efficient enough. No RLE needed.
+// btoa for binary-safe localStorage storage with version tracking.
+function compressData(str){
+return btoa(unescape(encodeURIComponent(str)));
+}
+function decompressData(encoded){
+return decodeURIComponent(escape(atob(encoded)));
+}
+
+// Serialize world arrays efficiently
+function serializeWorld(){
+// Sparse encoding: only store non-air tiles
+let tiles=[];
+for(let y=0;y<WORLD_H;y++){
+for(let x=0;x<WORLD_W;x++){
+let idx=y*WORLD_W+x;
+if(world[idx]!==T.AIR){
+tiles.push(x+','+y+','+world[idx]+','+tileHardness[idx]+','+torchMap[idx]);
+}
+}
+}
+return tiles.join(';');
+}
+function deserializeWorld(data){
+// Reset world
+world.fill(T.AIR);
+tileHardness.fill(0);
+torchMap.fill(0);
+if(!data)return;
+let entries=data.split(';');
+entries.forEach(entry=>{
+let parts=entry.split(',');
+let x=parseInt(parts[0]),y=parseInt(parts[1]),tile=parseInt(parts[2]),hard=parseInt(parts[3]),torch=parseInt(parts[4]);
+if(x>=0&&x<WORLD_W&&y>=0&&y<WORLD_H){
+let idx=y*WORLD_W+x;
+world[idx]=tile;
+tileHardness[idx]=hard;
+torchMap[idx]=torch;
+}
+});
+}
+
+function serializeBiomeMap(){
+return Array.from(biomeMap).join(',');
+}
+function deserializeBiomeMap(data){
+let parts=data.split(',');
+for(let i=0;i<WORLD_W&&i<parts.length;i++)biomeMap[i]=parseInt(parts[i]);
+}
+
+// Build full save state
+function buildSaveState(){
+return JSON.stringify({
+seed:worldSeed,
+gt:gameTime,
+dt:dayTime,
+w:serializeWorld(),
+b:serializeBiomeMap(),
+p:{
+x:player.x,y:player.y,vx:player.vx,vy:player.vy,
+hp:player.hp,maxHp:player.maxHp,defense:player.defense,
+inv:player.inventory,
+arm:player.armor,
+hi:player.hotbarIdx,
+dp:player.deathPos,
+dead:player.dead,respawnTimer:player.respawnTimer
+},
+e:entities.map(e=>({
+type:e.type,x:e.x,y:e.y,w:e.w,h:e.h,
+hp:e.hp,maxHp:e.maxHp,damage:e.damage,
+onGround:e.onGround||false,
+jumpTimer:e.jumpTimer||0,jumpInterval:e.jumpInterval||2
+}))
+});
+}
+
+function loadSaveState(json){
+let data=JSON.parse(json);
+worldSeed=data.seed;
+gameTime=data.gt||0;
+dayTime=data.dt||0.25;
+deserializeWorld(data.w);
+deserializeBiomeMap(data.b);
+let p=data.p;
+player.x=p.x;player.y=p.y;player.vx=p.vx||0;player.vy=p.vy||0;
+player.hp=p.hp;player.maxHp=p.maxHp;player.defense=p.defense;
+player.inventory=p.inv||new Array(40).fill(null);
+player.armor=p.arm||{head:null,chest:null,legs:null};
+player.hotbarIdx=p.hi||0;
+player.deathPos=p.dp||null;
+player.dead=p.dead||false;
+player.respawnTimer=p.respawnTimer||0;
+player.onGround=false;
+player.fallStart=player.y;
+player.fallDist=0;
+player.facing=1;
+player.pickProgress=0;player.pickTarget=null;
+player.attackCooldown=0;player.swinging=false;player.swingProgress=0;
+player.swingHit=false;
+// Restore entities
+entities=[];
+if(data.e){
+data.e.forEach(e=>{
+entities.push({
+type:e.type,x:e.x,y:e.y,w:e.w,h:e.h,
+vx:0,vy:0,hp:e.hp,maxHp:e.maxHp,damage:e.damage,
+onGround:e.onGround,jumpTimer:e.jumpTimer,jumpInterval:e.jumpInterval,
+knockbackX:0,knockbackY:0,alive:true
+});
+});
+}
+// Reinit noise generators for lighting/biome lookups
+perlin=new PerlinNoise(worldSeed);
+biomeNoise=new PerlinNoise(worldSeed+1);
+caveNoise=new PerlinNoise(worldSeed+2);
+oreNoise=new PerlinNoise(worldSeed+3);
+notifications=[];
+// Snap camera to player so lighting updates the correct area
+camera.x=player.x+player.w/2-canvas.width/2;
+camera.y=player.y+player.h/2-canvas.height/2;
+camera.x=Math.max(0,Math.min(WORLD_W*TILE-canvas.width,camera.x));
+camera.y=Math.max(0,Math.min(WORLD_H*TILE-canvas.height,camera.y));
+// Ensure textures are available after load
+generateTextures();
+// Pre-fill lightMap with baseline sun intensity so world is visible immediately
+let baseLight=dayTime>0.5?0.35:1.0;
+for(let i=0;i<lightMap.length;i++)lightMap[i]=baseLight;
+// Then compute proper lighting for the visible area
+forceLightingUpdate();
+// Reset music so it restarts with correct biome/time
+musicPlaying=false;
+musicPatternKey='';
+}
+
+// Save/Load from localStorage
+function getSaveSlots(){
+try{
+let data=localStorage.getItem(SAVE_KEY);
+return data?JSON.parse(data):[null,null,null];
+}catch(e){return [null,null,null];}
+}
+function saveSlot(slotIdx){
+let slots=getSaveSlots();
+let state=buildSaveState();
+let compressed=compressData(state);
+slots[slotIdx]={
+seed:worldSeed,
+gt:gameTime,dt:dayTime,
+created:Date.now(),
+lastPlayed:Date.now(),
+hp:player.hp,maxHp:player.maxHp,
+data:compressed
+};
+try{
+localStorage.setItem(SAVE_KEY,JSON.stringify(slots));
+return true;
+}catch(e){
+return false;
+}
+}
+function loadSlot(slotIdx){
+let slots=getSaveSlots();
+if(!slots[slotIdx])return false;
+try{
+let json=decompressData(slots[slotIdx].data);
+loadSaveState(json);
+return true;
+}catch(e){
+return false;
+}
+}
+function deleteSlot(slotIdx){
+let slots=getSaveSlots();
+slots[slotIdx]=null;
+localStorage.setItem(SAVE_KEY,JSON.stringify(slots));
+}
+function hasSlot(slotIdx){
+let slots=getSaveSlots();
+return !!slots[slotIdx];
+}
+function getSlotInfo(slotIdx){
+let slots=getSaveSlots();
+return slots[slotIdx]||null;
+}
+
 // ===== TILE TYPES =====
 const T={AIR:0,DIRT:1,STONE:2,GRASS:3,SAND:4,WOOD:5,LEAVES:6,IRON_ORE:7,GOLD_ORE:8,DIAMOND_ORE:9,SNOW:10,TORCH:11,PLANK:12,WORKBENCH:13,BEDROCK:14,IRON_BAR:15,GOLD_BAR:16,DIAMOND:17,HEAL_POTION:18,GREATER_POTION:19,SLIME_CROWN:20,GEL:21};
 const SOLID=[false,true,true,true,true,true,true,true,true,true,true,false,true,true,true,true,false,false,false,false,false,false,false];
@@ -258,24 +451,56 @@ let particles=[];
 let keys={};
 let mouse={x:0,y:0,left:false,right:false};
 let mouseWheel=0;
+let canvasOffsetX=0,canvasOffsetY=0;
+
+function updateCanvasOffset(){
+let rect=canvas.getBoundingClientRect();
+canvasOffsetX=rect.left;
+canvasOffsetY=rect.top;
+}
+window.addEventListener('resize',updateCanvasOffset);
+setTimeout(updateCanvasOffset,50);
 
 document.addEventListener('keydown',e=>{
-if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
+resumeAudio();
 keys[e.code]=true;
+// F5 - Quick save to slot 0
+if(e.code==='F5'){
+e.preventDefault();
+if(menuState==='playing'){
+let slot=selectedSaveSlot>=0?selectedSaveSlot:0;
+if(saveSlot(slot)){
+addNotification('Game saved to Slot '+(slot+1)+'!');
+notifications[notifications.length-1].time=5;
+}
+}
+return;
+}
+// Escape - toggle pause
+if(e.code==='Escape'){
+if(menuState==='playing'){
+menuState='paused';
+closePanels();
+}else if(menuState==='paused'){
+menuState='playing';
+}else if(inventoryOpen||craftingOpen){
+closePanels();
+}
+e.preventDefault();
+return;
+}
 if(e.code==='KeyR')toggleCrafting();
 if(e.code==='KeyM')toggleMusic();
 if(e.code==='KeyE')toggleInventory();
 if(e.code>='Digit1'&&e.code<='Digit9')player.hotbarIdx=parseInt(e.code[5])-1;
 if(e.code==='Digit0')player.hotbarIdx=9;
-if(e.code==='Escape'){closePanels();}
 e.preventDefault();
 });
 document.addEventListener('keyup',e=>{keys[e.code]=false;});
-canvas.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;});
+canvas.addEventListener('mousemove',e=>{updateCanvasOffset();mouse.x=e.clientX-canvasOffsetX;mouse.y=e.clientY-canvasOffsetY;});
 let gameStarted=false;
 canvas.addEventListener('mousedown',e=>{
-if(!gameStarted){gameStarted=true;}
-if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
+resumeAudio();
 if(e.button===0)mouse.left=true;
 if(e.button===2)mouse.right=true;
 e.preventDefault();
@@ -293,9 +518,10 @@ player.hotbarIdx=(player.hotbarIdx+(e.deltaY>0?1:-1)+10)%10;
 let dragItem=null,dragFrom=null,dragType=null;
 canvas.addEventListener('mousedown',e=>{
 if(inventoryOpen){
+updateCanvasOffset();
 let ix=invPanel.x,iy=invPanel.y;
 let slotW=36,slotH=36;
-let mx=e.clientX-ix,my=e.clientY-iy;
+let mx=e.clientX-canvasOffsetX-ix,my=e.clientY-canvasOffsetY-iy;
 // Hotbar (inside inventory panel) - relative coords: 10, 160
 for(let i=0;i<10;i++){
 let sx=10+i*slotW,sy=160;
@@ -324,8 +550,9 @@ if(player.armor[s]){dragItem=player.armor[s];dragFrom=s;dragType='armor';}
 });
 canvas.addEventListener('mouseup',e=>{
 if(dragItem&&dragType==='inv'){
+updateCanvasOffset();
 let ix=invPanel.x,iy=invPanel.y;
-let mx=e.clientX-ix,my=e.clientY-iy;
+let mx=e.clientX-canvasOffsetX-ix,my=e.clientY-canvasOffsetY-iy;
 let slotW=36,slotH=36;
 let dropped=false;
 // Check armor slots
@@ -368,8 +595,9 @@ dropped=true;break;
 if(!dropped){/* keep item where it was */}
 }
 }else if(dragItem&&dragType==='armor'){
+updateCanvasOffset();
 let ix=invPanel.x,iy=invPanel.y;
-let mx=e.clientX-ix,my=e.clientY-iy;
+let mx=e.clientX-canvasOffsetX-ix,my=e.clientY-canvasOffsetY-iy;
 let slotW=36,slotH=36;
 let dropped=false;
 for(let r=0;r<4;r++){for(let c=0;c<10;c++){
@@ -500,11 +728,24 @@ let audioCtx=null,musicEnabled=true,musicGain=null,sfxGain=null;
 let currentMusicPattern=null,musicPlaying=false;
 
 function initAudio(){
+// Audio context is created lazily on first user interaction
+// Browsers block AudioContext created without user gesture
+}
+
+function resumeAudio(){
+if(!audioCtx){
 try{
 audioCtx=new(window.AudioContext||window.webkitAudioContext)();
 musicGain=audioCtx.createGain();musicGain.gain.value=0.25;musicGain.connect(audioCtx.destination);
 sfxGain=audioCtx.createGain();sfxGain.gain.value=0.35;sfxGain.connect(audioCtx.destination);
-}catch(e){audioCtx=null;}
+}catch(e){audioCtx=null;return;}
+}
+if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
+// Re-init gain nodes if lost
+if(!musicGain){
+musicGain=audioCtx.createGain();musicGain.gain.value=0.25;musicGain.connect(audioCtx.destination);
+sfxGain=audioCtx.createGain();sfxGain.gain.value=0.35;sfxGain.connect(audioCtx.destination);
+}
 }
 
 function toggleMusic(){musicEnabled=!musicEnabled;if(musicGain)musicGain.gain.value=musicEnabled?0.25:0;}
@@ -1088,40 +1329,24 @@ return'cavern';
 
 // ===== LIGHTING =====
 let lightingTimer=0;
-function updateLighting(dt){
-lightingTimer+=dt;
-if(lightingTimer<0.1)return; // Update every ~100ms
-lightingTimer=0;
-
+function computeLighting(){
 let isNight=dayTime>0.5;
 let sunIntensity=isNight?0.08:1.0;
-
-// Only update visible area + margin
 let margin=5;
 let startX=Math.max(0,Math.floor(camera.x/TILE)-margin);
 let startY=Math.max(0,Math.floor(camera.y/TILE)-margin);
 let endX=Math.min(WORLD_W,startX+Math.ceil(canvas.width/TILE)+2*margin+1);
 let endY=Math.min(WORLD_H,startY+Math.ceil(canvas.height/TILE)+2*margin+1);
-
-// Reset visible area
 for(let y=startY;y<endY;y++){for(let x=startX;x<endX;x++){lightMap[y*WORLD_W+x]=0;}}
-
-// Sunlight rays
 for(let x=startX;x<endX;x++){
 let intensity=sunIntensity;
 for(let y=0;y<WORLD_H;y++){
 let idx=y*WORLD_W+x;
-if(world[idx]===T.AIR){
-lightMap[idx]=Math.max(lightMap[idx],intensity);
-}else{
-intensity*=0.25;
-lightMap[idx]=Math.max(lightMap[idx],intensity*0.3);
-}
+if(world[idx]===T.AIR){lightMap[idx]=Math.max(lightMap[idx],intensity);}
+else{intensity*=0.25;lightMap[idx]=Math.max(lightMap[idx],intensity*0.3);}
 if(intensity<0.01)break;
 }
 }
-
-// Torch light (visible area only)
 for(let y=startY;y<endY;y++){
 for(let x=startX;x<endX;x++){
 if(world[y*WORLD_W+x]===T.TORCH){
@@ -1138,6 +1363,16 @@ lightMap[ty*WORLD_W+tx]=Math.max(lightMap[ty*WORLD_W+tx],intensity);
 }}}
 }
 }
+}
+function updateLighting(dt){
+lightingTimer+=dt;
+if(lightingTimer<0.1)return;
+lightingTimer=0;
+computeLighting();
+}
+function forceLightingUpdate(){
+lightingTimer=0;
+computeLighting();
 }
 
 // ===== PLAYER PHYSICS =====
@@ -2071,7 +2306,7 @@ let light=lightMap[ty*WORLD_W+tx];
 if(light<1){
 let darkness=Math.floor((1-light)*180);
 let sx=tx*TILE-camera.x,sy=ty*TILE-camera.y;
-ctx.fillStyle=`rgba(0,0,20,${(1-light)*0.7})`;
+ctx.fillStyle=`rgba(0,0,20,${(1-light)*0.55})`;
 ctx.fillRect(sx,sy,TILE,TILE);
 }
 }
@@ -2306,7 +2541,7 @@ ctx.fillText(`Respawning in ${Math.ceil(player.respawnTimer)}...`,canvas.width/2
 ctx.fillStyle='rgba(0,0,0,0.4)';
 ctx.fillRect(0,canvas.height-16,canvas.width,16);
 ctx.fillStyle='#888';ctx.font='10px monospace';ctx.textAlign='center';
-ctx.fillText('WASD:Move Space:Jump LClick:Mine RClick:Place E:Inventory R:Crafting Q:Use M:Music 1-0:Hotbar',canvas.width/2,canvas.height-5);
+ctx.fillText('WASD:Move Space:Jump LClick:Mine RClick:Place E:Inv R:Craft Q:Use M:Music F5:Save Esc:Pause 1-0:Hotbar',canvas.width/2,canvas.height-5);
 
 // Item tooltip on hover
 if(inventoryOpen){
@@ -2331,13 +2566,341 @@ if(def.defense)ctx.fillText(`DEF: ${def.defense}`,mouse.x+14,mouse.y+5);
 }
 }
 
-// ===== CLICK HANDLERS FOR UI =====
+// ===== MENU RENDERING =====
+function drawButton(x,y,w,h,text,hovered){
+ctx.fillStyle=hovered?'rgba(100,200,100,0.9)':'rgba(50,50,50,0.9)';
+ctx.fillRect(x,y,w,h);
+ctx.strokeStyle=hovered?'#8f8':'#888';
+ctx.lineWidth=hovered?3:2;
+ctx.strokeRect(x,y,w,h);
+ctx.fillStyle='#fff';
+ctx.font='bold 16px monospace';
+ctx.textAlign='center';
+ctx.fillText(text,x+w/2,y+h/2+5);
+}
+
+function drawTitleScreen(){
+// Background with animated particles
+ctx.fillStyle='#111';
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+// Animated background
+for(let i=0;i<40;i++){
+let px=(Math.sin(gameTime*0.3+i*1.7)*canvas.width*0.4+canvas.width/2+i*47)%canvas.width;
+let py=(Math.cos(gameTime*0.2+i*1.1)*canvas.height*0.3+canvas.height/2+i*31)%canvas.height;
+ctx.fillStyle=`hsla(${(i*23+gameTime*40)%360},60%,50%,0.25)`;
+ctx.fillRect(px,py,5,5);
+}
+
+ctx.textAlign='center';
+
+// Title
+ctx.fillStyle='#4a4';
+ctx.font='bold 56px monospace';
+ctx.fillText('TERRARIA',canvas.width/2,canvas.height/2-120);
+
+ctx.fillStyle='#8f8';
+ctx.font='bold 24px monospace';
+ctx.fillText('CLONE',canvas.width/2,canvas.height/2-80);
+
+// Subtitle
+ctx.fillStyle='#888';
+ctx.font='14px monospace';
+ctx.fillText('A sandbox adventure',canvas.width/2,canvas.height/2-50);
+
+// Buttons
+let bw=260,bh=44;
+let bx=canvas.width/2-bw/2;
+menuHoverButton=-1;
+
+// New World button
+let by1=canvas.height/2-10;
+if(isMouseInRect(bx,by1,bw,bh))menuHoverButton=0;
+drawButton(bx,by1,bw,bh,'New World',menuHoverButton===0);
+
+// Load World button
+let by2=canvas.height/2+46;
+if(isMouseInRect(bx,by2,bw,bh))menuHoverButton=1;
+drawButton(bx,by2,bw,bh,'Load World',menuHoverButton===1);
+
+// Controls hint
+ctx.fillStyle='#555';
+ctx.font='11px monospace';
+ctx.fillText('WASD: Move | Space: Jump | LClick: Mine | RClick: Place',canvas.width/2,canvas.height/2+130);
+ctx.fillText('E: Inventory | R: Crafting | Q: Use | F5: Quick Save | Esc: Pause',canvas.width/2,canvas.height/2+150);
+}
+
+function drawSaveSelectScreen(){
+ctx.fillStyle='#111';
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+// Animated background
+for(let i=0;i<30;i++){
+let px=(Math.sin(gameTime*0.25+i*2.1)*canvas.width*0.4+canvas.width/2+i*53)%canvas.width;
+let py=(Math.cos(gameTime*0.15+i*1.4)*canvas.height*0.3+canvas.height/2+i*37)%canvas.height;
+ctx.fillStyle=`hsla(${(i*29+gameTime*30)%360},50%,45%,0.2)`;
+ctx.fillRect(px,py,4,4);
+}
+
+ctx.textAlign='center';
+ctx.fillStyle='#8f8';
+ctx.font='bold 32px monospace';
+ctx.fillText('Select Save Slot',canvas.width/2,60);
+
+// Save slot cards
+let cardW=400,cardH=120;
+let cardX=canvas.width/2-cardW/2;
+let cardStartY=100;
+let cardGap=20;
+
+menuHoverButton=-1;
+
+for(let i=0;i<SAVE_SLOTS;i++){
+let cy=cardStartY+i*(cardH+cardGap);
+let info=getSlotInfo(i);
+let hasData=!!info;
+let isHovered=isMouseInRect(cardX,cy,cardW,cardH);
+if(isHovered)menuHoverButton=10+i;
+
+// Card background
+ctx.fillStyle=isHovered?'rgba(60,60,60,0.95)':'rgba(40,40,40,0.95)';
+ctx.fillRect(cardX,cy,cardW,cardH);
+ctx.strokeStyle=isHovered?'#8f8':'#555';
+ctx.lineWidth=isHovered?2:1;
+ctx.strokeRect(cardX,cy,cardW,cardH);
+
+// Slot number
+ctx.fillStyle='#8f8';
+ctx.font='bold 16px monospace';
+ctx.textAlign='left';
+ctx.fillText('Slot '+(i+1),cardX+15,cy+25);
+
+if(hasData){
+// Show save info
+ctx.fillStyle='#ccc';
+ctx.font='12px monospace';
+let playTime=formatPlayTime(info.gt||0);
+let timeStr=info.dt&&info.dt<0.5?'Day':'Night';
+ctx.fillText(`Seed: ${info.seed}  |  Time: ${timeStr}  |  Play: ${playTime}`,cardX+15,cy+48);
+
+ctx.fillStyle='#aaa';
+ctx.font='11px monospace';
+let dateStr=new Date(info.lastPlayed).toLocaleString();
+ctx.fillText(`Last played: ${dateStr}`,cardX+15,cy+68);
+
+ctx.fillStyle='#888';
+ctx.fillText(`HP: ${info.hp||100}/${info.maxHp||100}`,cardX+15,cy+88);
+
+// Play button
+let playBx=cardX+cardW-110,playBy=cy+cardH-40,playBw=55,playBh=32;
+let playHovered=isMouseInRect(playBx,playBy,playBw,playBh);
+if(playHovered)menuHoverButton=20+i;
+drawButton(playBx,playBy,playBw,playBh,'Play',playHovered);
+
+// Delete button
+let delBx=cardX+cardW-55,delBy=cy+cardH-40,delBw=55,delBh=32;
+let delHovered=isMouseInRect(delBx,delBy,delBw,delBh);
+if(delHovered)menuHoverButton=30+i;
+drawButton(delBx,delBy,delBw,delBh,'Delete',delHovered);
+}else{
+// Empty slot
+ctx.fillStyle='#666';
+ctx.font='14px monospace';
+ctx.textAlign='center';
+ctx.fillText('Empty Slot',cardX+cardW/2,cy+50);
+
+// New World button
+let newBx=cardX+cardW/2-70,newBy=cy+cardH-42,newBw=140,newBh=32;
+let newHovered=isMouseInRect(newBx,newBy,newBw,newBh);
+if(newHovered)menuHoverButton=40+i;
+drawButton(newBx,newBy,newBw,newBh,'New World',newHovered);
+}
+}
+
+// Back button
+let backW=120,backH=36;
+let backX=canvas.width/2-backW/2;
+let backY=cardStartY+SAVE_SLOTS*(cardH+cardGap)+20;
+let backHovered=isMouseInRect(backX,backY,backW,backH);
+if(backHovered)menuHoverButton=99;
+drawButton(backX,backY,backW,backH,'Back',backHovered);
+}
+
+function drawPauseMenu(){
+// Dim background
+ctx.fillStyle='rgba(0,0,0,0.7)';
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+ctx.textAlign='center';
+ctx.fillStyle='#fff';
+ctx.font='bold 36px monospace';
+ctx.fillText('PAUSED',canvas.width/2,canvas.height/2-100);
+
+let bw=240,bh=44;
+let bx=canvas.width/2-bw/2;
+menuHoverButton=-1;
+
+// Resume
+let by1=canvas.height/2-50;
+if(isMouseInRect(bx,by1,bw,bh))menuHoverButton=0;
+drawButton(bx,by1,bw,bh,'Resume (Esc)',menuHoverButton===0);
+
+// Save
+let by2=canvas.height/2+5;
+if(isMouseInRect(bx,by2,bw,bh))menuHoverButton=1;
+drawButton(bx,by2,bw,bh,'Save Game (F5)',menuHoverButton===1);
+
+// Save to specific slot buttons
+let slotBtnW=80,slotBtnH=32;
+let slotBtnStartX=canvas.width/2-(SAVE_SLOTS*slotBtnW+(SAVE_SLOTS-1)*10)/2;
+let slotBtnY=canvas.height/2+60;
+ctx.fillStyle='#aaa';ctx.font='12px monospace';ctx.textAlign='center';
+ctx.fillText('Save to slot:',canvas.width/2,slotBtnY-5);
+for(let i=0;i<SAVE_SLOTS;i++){
+let sbx=slotBtnStartX+i*(slotBtnW+10);
+let sHovered=isMouseInRect(sbx,slotBtnY,slotBtnW,slotBtnH);
+if(sHovered)menuHoverButton=10+i;
+drawButton(sbx,slotBtnY,slotBtnW,slotBtnH,'Slot '+(i+1),sHovered);
+}
+
+// Main Menu
+let by3=canvas.height/2+110;
+if(isMouseInRect(bx,by3,bw,bh))menuHoverButton=98;
+drawButton(bx,by3,bw,bh,'Main Menu',menuHoverButton===98);
+}
+
+function isMouseInRect(x,y,w,h){
+return mouse.x>=x&&mouse.x<=x+w&&mouse.y>=y&&mouse.y<=y+h;
+}
+
+function formatPlayTime(gameTimeSeconds){
+let minutes=Math.floor(gameTimeSeconds/60);
+let hours=Math.floor(minutes/60);
+minutes=minutes%60;
+if(hours>0)return hours+'h '+minutes+'m';
+return minutes+'m';
+}
 canvas.addEventListener('click',e=>{
+updateCanvasOffset();
+let mx=e.clientX-canvasOffsetX;
+let my=e.clientY-canvasOffsetY;
+// ===== MENU CLICK HANDLING =====
+if(menuState==='title'){
+let bw=260,bh=44;
+let bx=canvas.width/2-bw/2;
+// New World button
+let by1=canvas.height/2-10;
+if(mx>=bx&&mx<=bx+bw&&my>=by1&&my<=by1+bh){
+// Create new world in first empty slot
+for(let i=0;i<SAVE_SLOTS;i++){if(!hasSlot(i)){selectedSaveSlot=i;initNewWorld();return;}}
+// All slots full, go to save select
+menuState='saveSelect';
+return;
+}
+// Load World button
+let by2=canvas.height/2+46;
+if(mx>=bx&&mx<=bx+bw&&my>=by2&&my<=by2+bh){
+menuState='saveSelect';
+return;
+}
+return;
+}
+if(menuState==='saveSelect'){
+let cardW=400,cardH=120;
+let cardX=canvas.width/2-cardW/2;
+let cardStartY=100;
+let cardGap=20;
+for(let i=0;i<SAVE_SLOTS;i++){
+let cy=cardStartY+i*(cardH+cardGap);
+let info=getSlotInfo(i);
+if(info){
+// Play button
+let playBx=cardX+cardW-110,playBy=cy+cardH-40,playBw=55,playBh=32;
+if(mx>=playBx&&mx<=playBx+playBw&&my>=playBy&&my<=playBy+playBh){
+selectedSaveSlot=i;
+if(loadSlot(i)){
+menuState='playing';
+gameStarted=true;
+resumeAudio();
+addNotification('World loaded!');
+notifications[notifications.length-1].time=5;
+}
+return;
+}
+// Delete button
+let delBx=cardX+cardW-55,delBy=cy+cardH-40,delBw=55,delBh=32;
+if(mx>=delBx&&mx<=delBx+delBw&&my>=delBy&&my<=delBy+delBh){
+deleteSlot(i);
+return;
+}
+}else{
+// New World button
+let newBx=cardX+cardW/2-70,newBy=cy+cardH-42,newBw=140,newBh=32;
+if(mx>=newBx&&mx<=newBx+newBw&&my>=newBy&&my<=newBy+newBh){
+selectedSaveSlot=i;
+initNewWorld();
+return;
+}
+}
+}
+// Back button
+let backW=120,backH=36;
+let backX=canvas.width/2-backW/2;
+let backY=cardStartY+SAVE_SLOTS*(cardH+cardGap)+20;
+if(mx>=backX&&mx<=backX+backW&&my>=backY&&my<=backY+backH){
+menuState='title';
+return;
+}
+return;
+}
+if(menuState==='paused'){
+let bw=240,bh=44;
+let bx=canvas.width/2-bw/2;
+// Resume
+let by1=canvas.height/2-50;
+if(mx>=bx&&mx<=bx+bw&&my>=by1&&my<=by1+bh){
+menuState='playing';
+return;
+}
+// Save Game
+let by2=canvas.height/2+5;
+if(mx>=bx&&mx<=bx+bw&&my>=by2&&my<=by2+bh){
+let slot=selectedSaveSlot>=0?selectedSaveSlot:0;
+if(saveSlot(slot)){
+addNotification('Game saved to Slot '+(slot+1)+'!');
+notifications[notifications.length-1].time=5;
+}
+return;
+}
+// Save to slot buttons
+let slotBtnW=80,slotBtnH=32;
+let slotBtnStartX=canvas.width/2-(SAVE_SLOTS*slotBtnW+(SAVE_SLOTS-1)*10)/2;
+let slotBtnY=canvas.height/2+60;
+for(let i=0;i<SAVE_SLOTS;i++){
+let sbx=slotBtnStartX+i*(slotBtnW+10);
+if(mx>=sbx&&mx<=sbx+slotBtnW&&my>=slotBtnY&&my<=slotBtnY+slotBtnH){
+if(saveSlot(i)){
+addNotification('Game saved to Slot '+(i+1)+'!');
+notifications[notifications.length-1].time=5;
+}
+return;
+}
+}
+// Main Menu
+let by3=canvas.height/2+110;
+if(mx>=bx&&mx<=bx+bw&&my>=by3&&my<=by3+bh){
+menuState='title';
+closePanels();
+return;
+}
+return;
+}
+// Normal game click handling (only when playing)
 if(inventoryOpen){
 let ix=invPanel.x,iy=invPanel.y;
-let mx=e.clientX-ix,my=e.clientY-iy;
+let imx=mx-ix,imy=my-iy;
 // Sort button
-if(mx>=360&&mx<440&&my>=140&&my<166){
+if(imx>=360&&imx<440&&imy>=140&&imy<166){
 sortInventory();
 return;
 }
@@ -2345,7 +2908,7 @@ return;
 let armSlots=['head','chest','legs'];
 armSlots.forEach((s,i)=>{
 let sx=360,sy=20+i*40;
-if(mx>=sx&&mx<sx+36&&my>=sy&&my<sy+36){
+if(imx>=sx&&imx<sx+36&&imy>=sy&&imy<sy+36){
 if(player.armor[s]&&!dragItem){
 // Swap with selected hotbar slot
 let hSlot=player.hotbarIdx;
@@ -2364,11 +2927,11 @@ recalcDefense();
 if(craftingOpen){
 let cw=400;
 let panelX=canvas.width-cw-20;
-let mx=e.clientX-panelX,my=e.clientY-20;
+let cmx=mx-panelX,cmy=my-20;
 let visibleRecipes=Math.min(RECIPES.length,Math.floor((Math.min(400,RECIPES.length*35+60)-60)/32));
 for(let i=0;i<RECIPES.length&&i<visibleRecipes;i++){
 let ry=60+i*32;
-if(mx>=0&&mx<cw-20&&my>=ry&&my<ry+30){
+if(cmx>=0&&cmx<cw-20&&cmy>=ry&&cmy<ry+30){
 craft(RECIPES[i]);
 return;
 }
@@ -2416,9 +2979,23 @@ notifications=notifications.filter(n=>n.time>0);
 }
 
 // ===== INIT =====
-function init(){
+function initNewWorld(){
+worldSeed=Math.floor(Math.random()*999999);
 generateWorld();
 generateTextures();
+
+// Reset player
+player.x=0;player.y=0;player.vx=0;player.vy=0;
+player.hp=100;player.maxHp=100;player.defense=0;
+player.inventory=new Array(40).fill(null);
+player.armor={head:null,chest:null,legs:null};
+player.hotbarIdx=0;
+player.dead=false;player.respawnTimer=0;
+player.deathPos=null;
+player.pickProgress=0;player.pickTarget=null;
+player.attackCooldown=0;player.swinging=false;player.swingProgress=0;
+player.swingHit=false;player.facing=1;
+player.onGround=false;player.fallStart=0;player.fallDist=0;
 
 // Find spawn point
 let spawnX=Math.floor(WORLD_W/2);
@@ -2433,84 +3010,92 @@ for(let y=surfY-5;y<surfY;y++){for(let x=spawnX-2;x<=spawnX+1;x++){if(x>=0&&x<WO
 addItemToInventory(T.WOOD,30);
 addItemToInventory(T.GEL,10);
 addItemToInventory(T.STONE,10);
-// Give a starting wood pickaxe and sword
 player.inventory[player.inventory.findIndex(i=>!i)]={id:'PICK_WOOD',count:1};
 player.inventory[player.inventory.findIndex(i=>!i)]={id:'SWORD_WOOD',count:1};
-// Craft starting planks and put some torches
 player.inventory[player.inventory.findIndex(i=>!i)]={id:T.PLANK,count:10};
 player.inventory[player.inventory.findIndex(i=>!i)]={id:T.TORCH,count:15};
 player.inventory[player.inventory.findIndex(i=>!i)]={id:T.HEAL_POTION,count:2};
 
-initAudio();
+// Reset entities and particles
+entities=[];
+particles=[];
+gameTime=0;
+dayTime=0.25;
+notifications=[];
+// Pre-fill lightMap with baseline sun intensity so world is visible immediately
+let baseLight=dayTime>0.5?0.35:1.0;
+for(let i=0;i<lightMap.length;i++)lightMap[i]=baseLight;
+// Snap camera to player so lighting updates the correct area immediately
+camera.x=player.x+player.w/2-canvas.width/2;
+camera.y=player.y+player.h/2-canvas.height/2;
+camera.x=Math.max(0,Math.min(WORLD_W*TILE-canvas.width,camera.x));
+camera.y=Math.max(0,Math.min(WORLD_H*TILE-canvas.height,camera.y));
+// Force immediate lighting for the visible area
+forceLightingUpdate();
+// Reset music
+musicPlaying=false;
+musicPatternKey='';
+
+menuState='playing';
+gameStarted=true;
+resumeAudio();
 addNotification('Welcome to Terraria Clone!');
 notifications[notifications.length-1].time=8;
 }
 
-init();
-
-// Title screen overlay
-function drawTitleScreen(){
-ctx.fillStyle='rgba(0,0,0,0.85)';
-ctx.fillRect(0,0,canvas.width,canvas.height);
-
-// Animated background particles
-for(let i=0;i<30;i++){
-let px=(Math.sin(gameTime*0.5+i*1.3)*canvas.width*0.4+canvas.width/2+i*50)%canvas.width;
-let py=(Math.cos(gameTime*0.3+i*0.7)*canvas.height*0.3+canvas.height/2+i*30)%canvas.height;
-ctx.fillStyle=`hsla(${(i*30+gameTime*50)%360},70%,60%,0.3)`;
-ctx.fillRect(px,py,4,4);
+function init(){
+generateTextures();
+initAudio();
+menuState='title';
+gameStarted=false;
+gameTime=0;
+// Generate a dummy seed for the title screen
+worldSeed=Math.floor(Math.random()*999999);
 }
 
-ctx.textAlign='center';
-ctx.fillStyle='#4a4';
-ctx.font='bold 48px monospace';
-ctx.fillText('TERRARIA',canvas.width/2,canvas.height/2-80);
-
-ctx.fillStyle='#8f8';
-ctx.font='bold 20px monospace';
-ctx.fillText('CLONE',canvas.width/2,canvas.height/2-45);
-
-ctx.fillStyle='#fff';
-ctx.font='16px monospace';
-ctx.fillText('Click to Start',canvas.width/2,canvas.height/2+20);
-
-ctx.fillStyle='#aaa';
-ctx.font='12px monospace';
-ctx.fillText('WASD: Move | Space: Jump | LClick: Mine | RClick: Place',canvas.width/2,canvas.height/2+60);
-ctx.fillText('E: Inventory | R: Crafting | Q: Use Item | M: Music Toggle',canvas.width/2,canvas.height/2+80);
-ctx.fillText('1-0: Hotbar',canvas.width/2,canvas.height/2+100);
-
-ctx.fillStyle='#666';
-ctx.font='10px monospace';
-ctx.fillText(`Seed: ${worldSeed}`,canvas.width/2,canvas.height/2+140);
-}
-
-// Override gameLoop to show title
-let originalGameLoop=gameLoop;
-function gameLoopWithTitle(timestamp){
+// ===== MAIN GAME LOOP WITH MENU SUPPORT =====
+function mainGameLoop(timestamp){
 let dt=(timestamp-lastTime)/1000;
 lastTime=timestamp;
 if(dt>0.1)dt=0.1;
 gameTime+=dt;
 
-if(!gameStarted){
+if(menuState==='title'){
 drawTitleScreen();
-requestAnimationFrame(gameLoopWithTitle);
+requestAnimationFrame(mainGameLoop);
+return;
+}
+if(menuState==='saveSelect'){
+drawSaveSelectScreen();
+requestAnimationFrame(mainGameLoop);
 return;
 }
 
+// Update game logic (only when playing)
+if(menuState==='playing'){
+// Persistent audio resume - browsers suspend AudioContext aggressively
+resumeAudio();
 accumulator+=dt;
 while(accumulator>=FIXED_DT){
 update(FIXED_DT);
 accumulator-=FIXED_DT;
 }
-render();
-requestAnimationFrame(gameLoopWithTitle);
 }
 
-// Start with title
+// Render game world
+render();
+
+// Draw pause menu overlay
+if(menuState==='paused'){
+drawPauseMenu();
+}
+
+requestAnimationFrame(mainGameLoop);
+}
+
+// Start
 lastTime=performance.now();
-requestAnimationFrame(gameLoopWithTitle);
+requestAnimationFrame(mainGameLoop);
 </script>
 </body>
 </html>
