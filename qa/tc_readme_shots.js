@@ -177,10 +177,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(1500);
   await shot('underground');
 
-  /* 6. boss fight, night — back on the surface (shot 5 left the player in a cave) */
+  /* 6. boss fight, night — back on the surface (shot 5 left the player in a cave).
+     Player geared up: full diamond armor (bright cyan reads against the dark night,
+     contrasts the purple king) + diamond sword in the hotbar. */
   console.log('boss setup:', await exec(goBiome(0, 0.75, 4)));
   await sleep(600);
-  await exec('TC.setUI(false);TC.spawnBoss();return "summoned";');
+  await exec('return (function(){var i=TC.inv;i[50]={id:"armor_dia_helm",count:1};i[51]={id:"armor_dia_chest",count:1};i[52]={id:"armor_dia_legs",count:1};i[0]={id:"sword_dia",count:1};i[1]={id:"potion_greater",count:3};TC.setSelected(0);TC.setUI(false);TC.spawnBoss();return "summoned";})();');
   await sleep(3800);
   await shot('boss');
 
