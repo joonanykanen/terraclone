@@ -333,6 +333,10 @@ function makeIcon(id){
   const c=mkCanvas(16,16),g=c.getContext('2d');
   const it=ITEMS[id];
   if(it.block!=null){g.drawImage(TEXTURES[it.block],0,0);return c;}
+  if(id==='iron_ore'||id==='gold_ore'||id==='dia_ore'){
+    const oc={iron_ore:['#d8a066','#f0c890'],gold_ore:['#f2d23c','#ffe97a'],dia_ore:['#56e0e8','#b0f6fa']}[id];
+    drawStoneBase(g);oreBlobs(g,oc[0],oc[1]);return c;
+  }
   const MC={iron:['#c9ced6','#8d939c','#e8ecf2'],gold:['#f2d23c','#c39a18','#ffe97a'],dia:['#5ce8f0','#2aa0ae','#c2f8fc'],wood:['#a06a38','#7a4c24','#c88c52']};
   if(id==='iron_bar'||id==='gold_bar'){
     const m=MC[id==='iron_bar'?'iron':'gold'];
