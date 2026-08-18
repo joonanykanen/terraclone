@@ -364,9 +364,9 @@ function makeIcon(id){
   return c;
 }
 /* ============================ world generation ============================ */
-const SEED=(Math.random()*0x7fffffff)|0;
+let SEED=(Math.random()*0x7fffffff)|0;
 let world=null,biome=null,surf=null;
-const mPer=makePerlin(SEED^0xc0ffee);
+let mPer=makePerlin(SEED^0xc0ffee);
 function genWorld(){
   const R=mulberry32(SEED^0x9e3779b9);
   const perT=makePerlin(SEED),perC=makePerlin(SEED^0x51ed27),perO=makePerlin(SEED^0x2b9a3f),perB=makePerlin(SEED^0x77aa11);
@@ -495,8 +495,14 @@ const player={x:0,y:0,w:12,h:24,vx:0,vy:0,face:1,onGround:false,hp:100,inv:0,coy
 let spawnX=0;
 let spawnY=100;
 let spawnCol=W>>1;
-const stars=(()=>{const R=mulberry32(SEED+5);const a=[];for(let i=0;i<130;i++)a.push({x:R()*CW,y:R()*CH*0.55,s:R()<0.85?1:2,sp:1+R()*3,ph:R()*6.28});return a;})();
-const clouds=(()=>{const R=mulberry32(SEED+9);const a=[];for(let i=0;i<9;i++)a.push({x:R()*(CW+480),y:30+R()*150,s:0.6+R()*0.9,v:5+R()*9});return a;})();
+let stars=[],clouds=[];
+function regenSeedDerived(){
+  mPer=makePerlin(SEED^0xc0ffee);
+  let R=mulberry32(SEED+5);stars=[];
+  for(let i=0;i<130;i++)stars.push({x:R()*CW,y:R()*CH*0.55,s:R()<0.85?1:2,sp:1+R()*3,ph:R()*6.28});
+  R=mulberry32(SEED+9);clouds=[];
+  for(let i=0;i<9;i++)clouds.push({x:R()*(CW+480),y:30+R()*150,s:0.6+R()*0.9,v:5+R()*9});
+}
 /* ============================ input ============================ */
 const keys={};
 const mouse={x:CW/2,y:CH/2,l:false,ljust:false};
@@ -505,20 +511,22 @@ canvas.addEventListener('mousedown',e=>{
   initAudio();
   const p=mpos(e);mouse.x=p.x;mouse.y=p.y;
   if(e.button===0){
+    if(menuState!=='playing'){menuDown(p);return;}
     mouse.l=true;mouse.ljust=true;
     if(uiOpen) uiDown(p);
     else{const r2=regionAt(p.x,p.y);if(r2&&r2.kind==='hot')selected=r2.idx;}
-  }else if(e.button===2){
+  }else if(e.button===2&&menuState==='playing'){
     if(uiOpen) uiRight(p); else if(!player.dead) rightAction();
   }
 });
 window.addEventListener('mouseup',e=>{
-  if(e.button===0){mouse.l=false;if(uiOpen&&drag)uiUp(mpos(e));}
+  if(e.button===0){mouse.l=false;if(menuState==='playing'&&uiOpen&&drag)uiUp(mpos(e));}
 });
 window.addEventListener('mousemove',e=>{const p=mpos(e);mouse.x=p.x;mouse.y=p.y;});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 window.addEventListener('wheel',e=>{
   e.preventDefault();
+  if(menuState!=='playing')return;
   const d=e.deltaY>0?1:-1;
   if(uiOpen) recScroll=clamp(recScroll+d,0,Math.max(0,RECIPES.length-9));
   else selected=(selected+d+10)%10;
@@ -526,11 +534,19 @@ window.addEventListener('wheel',e=>{
 window.addEventListener('keydown',e=>{
   if(e.code==='Space'||e.code==='ArrowUp'||e.code==='ArrowDown'||e.code==='ArrowLeft'||e.code==='ArrowRight')e.preventDefault();
   initAudio();
+  if(e.code==='F5'){e.preventDefault();quickSave();return;}
+  if(e.code==='Escape'){
+    if(menuState==='playing'){menuState='paused';uiOpen=false;drag=null;}
+    else if(menuState==='paused')menuState='playing';
+    else if(menuState==='saveSelect')menuState='title';
+    else if(uiOpen)uiOpen=false;
+    e.preventDefault();return;
+  }
   keys[e.code]=true;
   if(e.repeat)return;
-  if(e.code==='KeyR'&&!player.dead){uiOpen=!uiOpen;drag=null;}
-  if(e.code==='Escape')uiOpen=false;
   if(e.code==='KeyM')toggleMusic();
+  if(menuState!=='playing')return;
+  if(e.code==='KeyR'&&!player.dead){uiOpen=!uiOpen;drag=null;}
   if(e.code==='KeyE'&&!uiOpen&&!player.dead)useSelected();
   if(e.code.indexOf('Digit')===0){const n=+e.code.slice(5);selected=n===0?9:n-1;}
 });
@@ -1411,7 +1427,10 @@ function drawParticles(g){
 }
 function render(){
   perfT=performance.now()/1000;
+  uiRegions.length=0;
   const g=ctx;
+  if(menuState==='title'){drawTitleScreen(g);return;}
+  if(menuState==='saveSelect'){drawSaveSelectScreen(g);return;}
   g.save();
   if(shake>0.2)g.translate(((Math.random()-0.5)*shake)|0,((Math.random()-0.5)*shake)|0);
   drawSky(g);
@@ -1448,6 +1467,333 @@ function render(){
   drawParticles(g);
   g.restore();
   drawUI();
+  if(menuState==='paused')drawPauseOverlay(g);
+}
+/* ============================ save system (3 slots) ============================ */
+const SAVE_SLOTS=3, SAVE_KEY='terraria_clone_saves_v2';
+let menuState='title'; // title, saveSelect, playing, paused
+let selectedSaveSlot=-1;
+
+function compressData(s){return btoa(unescape(encodeURIComponent(s)));}
+function decompressData(s){return decodeURIComponent(escape(atob(s)));}
+
+function getSaveSlots(){
+  try{const d=localStorage.getItem(SAVE_KEY);return d?JSON.parse(d):[null,null,null];}
+  catch(e){return [null,null,null];}
+}
+function hasSlot(i){return !!getSaveSlots()[i];}
+function getSlotInfo(i){return getSaveSlots()[i]||null;}
+function deleteSlot(i){const s=getSaveSlots();s[i]=null;localStorage.setItem(SAVE_KEY,JSON.stringify(s));}
+
+function buildSaveState(){
+  const tiles=[];
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=world[y*W+x];if(t!==T.AIR)tiles.push(x+','+y+','+t);}
+  return JSON.stringify({
+    v:2,seed:SEED,gt:gameTime,
+    w:tiles.join(';'),
+    b:Array.from(biome).join(','),
+    srf:Array.from(surf).join(','),
+    p:{x:player.x,y:player.y,vx:player.vx,vy:player.vy,face:player.face,hp:player.hp,invT:player.inv,dead:player.dead,apex:player.apex,deathT:deathT},
+    inv:inv,
+    sel:selected,
+    cam:{x:camX,y:camY},
+    sp:{x:spawnX,y:spawnY,col:spawnCol},
+    e:entities.filter(e=>!e.dead).map(e=>({t:e.type,x:e.x,y:e.y,vx:e.vx,vy:e.vy,hp:e.hp,sm:e.small?1:0})),
+    d:drops.map(d=>({x:d.x,y:d.y,vx:d.vx,vy:d.vy,i:d.item,c:d.count}))
+  });
+}
+
+function saveSlot(i){
+  try{
+    const slots=getSaveSlots();
+    const had=slots[i];
+    slots[i]={v:2,seed:SEED,gt:gameTime,created:had?had.created:Date.now(),lastPlayed:Date.now(),hp:player.hp|0,day:dayNum,night:night,data:compressData(buildSaveState())};
+    localStorage.setItem(SAVE_KEY,JSON.stringify(slots));
+    selectedSaveSlot=i;
+    return true;
+  }catch(e){return false;}
+}
+
+function quickSave(){
+  if(menuState!=='playing'&&menuState!=='paused')return;
+  const i=selectedSaveSlot>=0?selectedSaveSlot:0;
+  if(saveSlot(i))notify('Game saved to Slot '+(i+1)+'!');
+  else notify('Save failed (storage unavailable).');
+}
+
+function loadSaveState(s){
+  SEED=s.seed|0;
+  regenSeedDerived();
+  world=new Uint8Array(W*H);
+  if(s.w)for(const en of s.w.split(';')){
+    const q=en.split(',');const x=+q[0],y=+q[1],t=+q[2];
+    if(x>=0&&x<W&&y>=0&&y<H)world[y*W+x]=t;
+  }
+  biome=new Uint8Array(W);
+  const bp=(s.b||'').split(',');
+  for(let i=0;i<W&&i<bp.length;i++)biome[i]=+bp[i]||0;
+  surf=new Int16Array(W);
+  const sp2=(s.srf||'').split(',');
+  for(let i=0;i<W&&i<sp2.length;i++)surf[i]=(+sp2[i])|0;
+  const p=s.p||{};
+  player.x=p.x||0;player.y=p.y||0;player.vx=p.vx||0;player.vy=p.vy||0;
+  player.face=p.face||1;
+  player.hp=p.dead?0:Math.max(1,Math.min(100,p.hp!=null?p.hp:100));
+  player.inv=p.invT||0;player.dead=!!p.dead;player.apex=p.apex!=null?p.apex:player.y;
+  player.onGround=false;player.coyote=0;player.jbuf=0;player.jheld=false;
+  player.atkCd=0;player.swing=0;player.walk=0;player.hurtCd=99;player.regenT=0;
+  inv.fill(null);
+  (s.inv||[]).forEach((it,i)=>{if(it&&i<53&&ITEMS[it.id])inv[i]={id:it.id,count:it.count};});
+  entities=[];
+  (s.e||[]).forEach(es=>{
+    if(es.t==='king'){
+      entities.push({type:'king',x:es.x,y:es.y,vx:es.vx||0,vy:es.vy||0,t:1.5,touch:0,flash:0,ph:0,onGround:false,hitWall:false,dead:false,face:1,small:false,w:44,h:32,hp:es.hp!=null?es.hp:500,maxhp:500,dmg:25,c1:'#b45ce8',c2:'#6d2f9e'});
+    }else if(['slime','zombie','bat'].indexOf(es.t)>=0){
+      const e=makeEntity(es.t,0,0);
+      e.x=es.x;e.y=es.y;e.vx=es.vx||0;e.vy=es.vy||0;
+      if(es.hp!=null)e.hp=es.hp;
+      if(es.sm){e.small=true;e.w=14;e.h=10;e.dmg=4;e.c1='#7ae87a';e.c2='#3fae3f';}
+    }
+  });
+  drops=[];
+  (s.d||[]).forEach(ds=>{if(ITEMS[ds.i])drops.push({x:ds.x,y:ds.y,vx:ds.vx||0,vy:ds.vy||0,item:ds.i,count:ds.c,age:0});});
+  selected=s.sel||0;
+  spawnX=s.sp.x;spawnY=s.sp.y;spawnCol=s.sp.col;
+  camX=clamp(s.cam.x,0,W*16-CW);camY=clamp(s.cam.y,0,H*16-CH);
+  gameTime=s.gt||0;
+  const di=dayInfo();dayF=di.dayF;night=di.night;dayNum=di.day;
+  parts=[];snowP=[];sandP=[];notes=[];
+  mining={tx:-1,ty:-1,p:0,snd:0};
+  shake=0;uiOpen=false;drag=null;recScroll=0;
+  deathT=p.dead?(p.deathT>0?p.deathT:3.2):0;
+  spawnT=2;
+  mouse.l=false;mouse.ljust=false;
+  musicKey='';curKey='';
+  updateMusicZone();
+}
+
+function loadSlot(i){
+  const slots=getSaveSlots();
+  const meta=slots[i];
+  if(!meta)return false;
+  try{
+    loadSaveState(JSON.parse(decompressData(meta.data)));
+    selectedSaveSlot=i;
+    meta.lastPlayed=Date.now();
+    localStorage.setItem(SAVE_KEY,JSON.stringify(slots));
+    menuState='playing';
+    notify('World loaded from Slot '+(i+1)+'!');
+    return true;
+  }catch(e){return false;}
+}
+
+function formatPlayTime(sec){
+  const m=Math.floor(sec/60),h=Math.floor(m/60);
+  return h>0?h+'h '+(m%60)+'m':m+'m';
+}
+
+function startNewWorld(slotIdx){
+  SEED=(Math.random()*0x7fffffff)|0;
+  regenSeedDerived();
+  genWorld();
+  spawnX=spawnCol*TILE-6;
+  spawnY=surf[spawnCol]*TILE-25;
+  player.x=spawnX;player.y=spawnY;player.vx=0;player.vy=0;player.face=1;
+  player.hp=100;player.dead=false;player.inv=0;player.apex=spawnY;
+  player.onGround=false;player.coyote=0;player.jbuf=0;player.jheld=false;
+  player.atkCd=0;player.swing=0;player.walk=0;player.hurtCd=99;player.regenT=0;
+  inv.fill(null);
+  inv[0]={id:'pick_wood',count:1};
+  inv[1]={id:'sword_wood',count:1};
+  inv[2]={id:'torch',count:6};
+  entities=[];drops=[];parts=[];snowP=[];sandP=[];notes=[];
+  mining={tx:-1,ty:-1,p:0,snd:0};
+  shake=0;selected=0;recScroll=0;uiOpen=false;drag=null;
+  deathT=0;spawnT=2;
+  gameTime=CYCLE*0.08;
+  const di=dayInfo();dayF=di.dayF;night=di.night;dayNum=di.day;
+  camX=clamp(player.x-CW/2,0,W*16-CW);
+  camY=clamp(player.y-CH/2,0,H*16-CH);
+  selectedSaveSlot=slotIdx;
+  musicKey='';curKey='';
+  updateMusicZone();
+  menuState='playing';
+  notify('Welcome to TerraClone! Chop wood, mine, craft.');
+  notify('Press R for inventory & crafting.');
+}
+/* ============================ menu screens ============================ */
+function drawMenuButton(g,x,y,w,h,label,idx){
+  const hov=mouse.x>=x&&mouse.x<x+w&&mouse.y>=y&&mouse.y<y+h;
+  g.fillStyle=hov?'rgba(58,90,138,0.95)':'rgba(28,36,52,0.92)';
+  rr(g,x,y,w,h,6);g.fill();
+  g.strokeStyle=hov?'#9aa8c4':'#4a5468';g.lineWidth=hov?2:1;
+  rr(g,x,y,w,h,6);g.stroke();
+  g.fillStyle=hov?'#ffffff':'#e8ecf4';g.font='bold 15px monospace';
+  g.textAlign='center';g.textBaseline='top';
+  g.fillText(label,x+w/2,y+(h-15)/2);
+  g.textAlign='left';
+  addRegion(x,y,w,h,'menu',idx);
+}
+function drawCardButton(g,x,y,w,h,label,idx,hovCol){
+  const hov=mouse.x>=x&&mouse.x<x+w&&mouse.y>=y&&mouse.y<y+h;
+  g.fillStyle=hov?hovCol:'rgba(28,36,52,0.92)';
+  rr(g,x,y,w,h,4);g.fill();
+  g.strokeStyle=hov?'#9aa8c4':'#4a5468';g.lineWidth=1;
+  rr(g,x,y,w,h,4);g.stroke();
+  g.fillStyle='#e8ecf4';g.font='bold 12px monospace';g.textAlign='center';g.textBaseline='top';
+  g.fillText(label,x+w/2,y+8);
+  g.textAlign='left';
+  addRegion(x,y,w,h,'menu',idx);
+}
+function drawTitleScreen(g){
+  const grad=g.createLinearGradient(0,0,0,CH);
+  grad.addColorStop(0,'#0a0f1e');grad.addColorStop(1,'#05060a');
+  g.fillStyle=grad;g.fillRect(0,0,CW,CH);
+  for(const s of stars){
+    g.globalAlpha=0.25+0.75*Math.abs(Math.sin(perfT*s.sp+s.ph));
+    g.fillStyle='#cfd8ea';g.fillRect(s.x|0,s.y|0,s.s,s.s);
+  }
+  g.globalAlpha=1;
+  g.fillStyle='rgba(30,40,66,0.55)';
+  g.beginPath();g.moveTo(0,CH);
+  for(let x=0;x<=CW;x+=32)g.lineTo(x,CH*0.72-Math.abs(mPer(x*0.004,17))*90);
+  g.lineTo(CW,CH);g.closePath();g.fill();
+  g.fillStyle='rgba(20,28,48,0.7)';
+  g.beginPath();g.moveTo(0,CH);
+  for(let x=0;x<=CW;x+=32)g.lineTo(x,CH*0.82-Math.abs(mPer(x*0.006,53))*60);
+  g.lineTo(CW,CH);g.closePath();g.fill();
+  g.textAlign='center';g.textBaseline='top';
+  g.fillStyle='#0a0d16';g.font='bold 66px monospace';
+  g.fillText('TerraClone',CW/2+3,CH/2-186);
+  g.fillStyle='#e8ecf4';
+  g.fillText('TerraClone',CW/2,CH/2-189);
+  g.fillStyle='#8892a8';g.font='14px monospace';
+  g.fillText('a single-file Terraria clone',CW/2,CH/2-126);
+  drawMenuButton(g,CW/2-130,CH/2-50,260,48,'New World','title:new');
+  drawMenuButton(g,CW/2-130,CH/2+14,260,48,'Load World','title:load');
+  g.fillStyle='#5a6478';g.font='11px monospace';
+  g.fillText('A/D Move  ·  Space Jump  ·  LMB Mine/Attack  ·  RMB Place/Use',CW/2,CH/2+104);
+  g.fillText('R Inventory/Craft  ·  1-0 / Wheel Select  ·  E Use  ·  M Music  ·  F5 Quick Save  ·  Esc Pause',CW/2,CH/2+124);
+  g.textAlign='left';
+}
+function drawSaveSelectScreen(g){
+  g.fillStyle='#05060a';g.fillRect(0,0,CW,CH);
+  for(let i=0;i<40;i++){
+    const px=(Math.sin(perfT*0.25+i*2.1)*CW*0.4+CW/2+i*53+CW)%CW;
+    const py=(Math.cos(perfT*0.15+i*1.4)*CH*0.3+CH/2+i*37+CH)%CH;
+    g.fillStyle='hsla('+(((i*29+perfT*30)%360)|0)+',50%,45%,0.18)';
+    g.fillRect(px|0,py|0,4,4);
+  }
+  g.textAlign='center';g.textBaseline='top';
+  g.fillStyle='#e8ecf4';g.font='bold 30px monospace';
+  g.fillText('Select Save Slot',CW/2,48);
+  g.textAlign='left';
+  const cardW=460,cardH=120,cardX=CW/2-cardW/2,cardStartY=100,cardGap=20;
+  for(let i=0;i<SAVE_SLOTS;i++){
+    const cy=cardStartY+i*(cardH+cardGap);
+    const info=getSlotInfo(i);
+    const hov=mouse.x>=cardX&&mouse.x<cardX+cardW&&mouse.y>=cy&&mouse.y<cy+cardH;
+    g.fillStyle=hov?'rgba(40,50,70,0.95)':'rgba(18,22,32,0.95)';
+    rr(g,cardX,cy,cardW,cardH,8);g.fill();
+    g.strokeStyle=hov?'#8892a8':'#4a5468';g.lineWidth=hov?2:1;
+    rr(g,cardX,cy,cardW,cardH,8);g.stroke();
+    g.beginPath();g.arc(cardX+18,cy+18,5,0,7);
+    g.fillStyle=info?'#5ecf3e':'#4a5468';g.fill();
+    if(info){g.beginPath();g.arc(cardX+18,cy+18,8,0,7);g.strokeStyle='rgba(94,207,62,0.4)';g.lineWidth=1;g.stroke();}
+    g.fillStyle='#e8ecf4';g.font='bold 16px monospace';g.textBaseline='top';
+    g.fillText('Slot '+(i+1),cardX+32,cy+10);
+    if(info){
+      g.fillStyle='#b8c4d8';g.font='12px monospace';
+      g.fillText('Seed: '+info.seed+'   ·   Day '+(info.day||1)+' · '+(info.night?'Night':'Day')+'   ·   Play: '+formatPlayTime(info.gt||0),cardX+16,cy+34);
+      g.fillStyle='#8892a8';g.font='11px monospace';
+      g.fillText('Last played: '+new Date(info.lastPlayed).toLocaleString(),cardX+16,cy+54);
+      g.fillText('HP: '+(info.hp||0)+'/100',cardX+16,cy+72);
+      const delBx=cardX+cardW-15-76,delBy=cy+cardH-40,delBw=76,delBh=30;
+      const playBx=delBx-12-84,playBy=delBy,playBw=84;
+      drawCardButton(g,playBx,playBy,playBw,delBh,'Play','slot:'+i+':play','#3a7a4a');
+      const dhov=mouse.x>=delBx&&mouse.x<delBx+delBw&&mouse.y>=delBy&&mouse.y<delBy+delBh;
+      g.fillStyle=dhov?'rgba(180,60,60,0.9)':'rgba(40,30,34,0.9)';
+      rr(g,delBx,delBy,delBw,delBh,4);g.fill();
+      g.strokeStyle=dhov?'#e08080':'#7a4a4a';g.lineWidth=1;
+      rr(g,delBx,delBy,delBw,delBh,4);g.stroke();
+      g.fillStyle='#ffffff';g.font='bold 12px monospace';g.textAlign='center';g.textBaseline='top';
+      g.fillText('Delete',delBx+delBw/2,delBy+8);
+      g.textAlign='left';
+      addRegion(delBx,delBy,delBw,delBh,'menu','slot:'+i+':del');
+    }else{
+      g.fillStyle='#5a6478';g.font='13px monospace';g.textAlign='center';g.textBaseline='top';
+      g.fillText('Empty slot',cardX+cardW/2,cy+30);
+      g.textAlign='left';
+      drawCardButton(g,cardX+cardW/2-80,cy+cardH-40,160,30,'New World','slot:'+i+':new','#2a4a7a');
+    }
+  }
+  drawMenuButton(g,CW/2-70,cardStartY+SAVE_SLOTS*(cardH+cardGap)+16,140,38,'Back (Esc)','saveSel:back');
+}
+function drawPauseOverlay(g){
+  g.fillStyle='rgba(0,0,0,0.7)';g.fillRect(0,0,CW,CH);
+  g.textAlign='center';g.textBaseline='top';
+  g.fillStyle='#e8ecf4';g.font='bold 36px monospace';
+  g.fillText('PAUSED',CW/2,CH/2-150);
+  g.textAlign='left';
+  drawMenuButton(g,CW/2-120,CH/2-90,240,44,'Resume (Esc)','pause:resume');
+  drawMenuButton(g,CW/2-120,CH/2-34,240,44,'Save Game (F5)','pause:save');
+  const gap=4,bw=240,sw=(bw-(SAVE_SLOTS-1)*gap)/SAVE_SLOTS,y=CH/2+22;
+  let tip=null;
+  for(let i=0;i<SAVE_SLOTS;i++){
+    const x=CW/2-bw/2+i*(sw+gap);
+    const info=getSlotInfo(i);
+    const hov=mouse.x>=x&&mouse.x<x+sw&&mouse.y>=y&&mouse.y<y+44;
+    g.fillStyle=hov?(info?'rgba(58,140,74,0.95)':'rgba(80,88,104,0.95)'):(info?'rgba(35,52,40,0.95)':'rgba(28,36,52,0.92)');
+    rr(g,x,y,sw,44,4);g.fill();
+    g.strokeStyle=info?'#5ecf3e':'#4a5468';g.lineWidth=1;
+    rr(g,x,y,sw,44,4);g.stroke();
+    g.fillStyle='#e8ecf4';g.font='bold 12px monospace';g.textAlign='center';g.textBaseline='top';
+    g.fillText('Slot '+(i+1),x+sw/2,y+14);
+    g.textAlign='left';
+    addRegion(x,y,sw,44,'menu','pause:slot:'+i);
+    if(hov&&info)tip={x:x+sw+10,y:y+22,lines:[
+      'Last saved: '+new Date(info.lastPlayed).toLocaleString(),
+      'Day '+(info.day||1)+' · '+(info.night?'Night':'Day')+' · Play: '+formatPlayTime(info.gt||0),
+      'Seed: '+info.seed+'  ·  HP: '+(info.hp||0)+'/100'
+    ]};
+  }
+  if(tip){
+    const tw=300,th=tip.lines.length*16+10;
+    const tx=clamp(tip.x,0,CW-tw),ty=clamp(tip.y-th/2,0,CH-th);
+    g.fillStyle='rgba(0,0,0,0.88)';rr(g,tx,ty,tw,th,4);g.fill();
+    g.strokeStyle='#5ecf3e';g.lineWidth=1;rr(g,tx,ty,tw,th,4);g.stroke();
+    g.fillStyle='#b8c4d8';g.font='11px monospace';g.textBaseline='top';
+    for(let t=0;t<tip.lines.length;t++)g.fillText(tip.lines[t],tx+8,ty+6+t*16);
+  }
+  drawMenuButton(g,CW/2-120,y+44+16,240,44,'Main Menu','pause:menu');
+}
+function menuDown(p){
+  const r2=regionAt(p.x,p.y);
+  if(!r2||r2.kind!=='menu')return;
+  const id=r2.idx;
+  if(id==='title:new'){
+    for(let i=0;i<SAVE_SLOTS;i++)if(!hasSlot(i)){startNewWorld(i);return;}
+    menuState='saveSelect';return;
+  }
+  if(id==='title:load'){menuState='saveSelect';return;}
+  if(id==='saveSel:back'){menuState='title';return;}
+  if(id.indexOf('slot:')===0){
+    const q=id.split(':');
+    const i=+q[1];
+    if(q[2]==='play'&&loadSlot(i))return;
+    if(q[2]==='del'){deleteSlot(i);return;}
+    if(q[2]==='new'){startNewWorld(i);return;}
+    return;
+  }
+  if(id==='pause:resume'){menuState='playing';return;}
+  if(id==='pause:save'){quickSave();return;}
+  if(id.indexOf('pause:slot:')===0){
+    const i=+id.slice('pause:slot:'.length);
+    if(saveSlot(i))notify('Game saved to Slot '+(i+1)+'!');
+    else notify('Save failed (storage unavailable).');
+    return;
+  }
+  if(id==='pause:menu'){menuState='title';uiOpen=false;drag=null;return;}
 }
 /* ============================ UI ============================ */
 function addRegion(x,y,w,h,kind,idx){uiRegions.push({x:x,y:y,w:w,h:h,kind:kind,idx:idx});}
@@ -1675,7 +2021,6 @@ function uiUp(p){
 }
 function drawUI(){
   const g=ctx;
-  uiRegions.length=0;
   g.textBaseline='top';
   g.textAlign='left';
   const hpw=230;
@@ -1753,7 +2098,7 @@ function drawUI(){
     g.textAlign='left';
   }
   g.font='11px monospace';g.fillStyle='rgba(220,230,245,0.75)';g.textAlign='left';
-  g.fillText('A/D or \u2190/\u2192 Move \u00B7 W/Space Jump \u00B7 S Fast-fall \u00B7 LMB Mine/Attack \u00B7 RMB Place/Use \u00B7 R Inventory/Craft \u00B7 1-0/Wheel Select \u00B7 E Use Item \u00B7 M Music',14,CH-16);
+  g.fillText('A/D or \u2190/\u2192 Move \u00B7 W/Space Jump \u00B7 S Fast-fall \u00B7 LMB Mine/Attack \u00B7 RMB Place/Use \u00B7 R Inventory/Craft \u00B7 1-0/Wheel Select \u00B7 E Use Item \u00B7 M Music \u00B7 F5 Save \u00B7 Esc Pause',14,CH-16);
 }
 /* ============================ main loop ============================ */
 let lastT=performance.now(),acc=0;
@@ -1762,30 +2107,20 @@ function frame(now){
   let dt=(now-lastT)/1000;
   lastT=now;
   if(dt>0.25)dt=0.25;
-  acc+=dt;
-  let n=0;
-  while(acc>=STEP&&n<5){update(STEP);acc-=STEP;n++;}
-  if(n===5)acc=0;
+  if(menuState==='playing'){
+    acc+=dt;
+    let n=0;
+    while(acc>=STEP&&n<5){update(STEP);acc-=STEP;n++;}
+    if(n===5)acc=0;
+  }else acc=0;
   render();
 }
 function boot(){
   buildTextures();
   buildSprites();
   buildIcons();
-  genWorld();
-  spawnX=spawnCol*TILE-6;
-  player.x=spawnX;
-  spawnY=surf[spawnCol]*TILE-25;
-  player.y=spawnY;
-  player.apex=player.y;
-  camX=clamp(player.x-CW/2,0,W*16-CW);
-  camY=clamp(player.y-CH/2,0,H*16-CH);
-  inv[0]={id:'pick_wood',count:1};
-  inv[1]={id:'sword_wood',count:1};
-  inv[2]={id:'torch',count:6};
-  updateMusicZone();
-  notify('Welcome to TerraClone! Chop wood, mine, craft.');
-  notify('Press R for inventory & crafting.');
+  regenSeedDerived();
+  menuState='title';
   requestAnimationFrame(frame);
 }
 boot();
@@ -1807,6 +2142,14 @@ window.TC={
   get spawnX(){return spawnX;},
   get spawnY(){return spawnY;},
   get camY(){return camY;},
+  get menuState(){return menuState;},
+  setMenuState:(v)=>{menuState=v;},
+  startNewWorld,
+  saveSlot,
+  loadSlot,
+  deleteSlot,
+  getSaveSlots,
+  quickSave,
   get surf(){return surf;},
   collides:(x,y,w,h)=>collidesBox(x,y,w,h),
   lightAt:(wx,wy)=>{const lx=Math.floor(camX/16)-1,ly=Math.floor(camY/16)-1;const sx=Math.round(wx/16-lx),sy=Math.round(wy/16-ly);if(sx<0||sx>=LW||sy<0||sy>=LH)return -1;return lightArr[sy*LW+sx];},
