@@ -1257,6 +1257,14 @@ function addLight(sx,sy,R0,max){
     }
   }
 }
+/* leaves (and the thin snow caps tundra trees wear) are solid to movement but porous to sky
+   light: each tile passes POROUS_ATT of the light through instead of hard-blocking like stone.
+   Canopies therefore read as softly shaded foliage and the ground under a tree gets a gentle
+   shade instead of a pitch-black blob. (Before "make leaves solid" they cast no shadow at all;
+   fully opaque made the shadow far too strong. The block decay below a tree starts from the
+   light that made it through the leaves via `carry`, so the trunk's shadow is soft too.) */
+const POROUS=[0,0,0,0,0,0,1,0,0,0,1,0,0,0,0]; // LEAVES, SNOW
+const POROUS_ATT=0.9;
 function updateLight(){
   const x0=Math.floor(camX/16)-1,y0=Math.floor(camY/16)-1;
   const amb=0.28+0.72*dayF;
@@ -1264,26 +1272,32 @@ function updateLight(){
   openArr.fill(0);
   for(let sx=0;sx<LW;sx++){
     const tx=x0+sx;
-    let ty=y0-1,d=0,blocked=false;
+    let ty=y0-1,d=0,blocked=false,carry=1;
     if(tx>=0&&tx<W){
       while(ty>=0&&d<70){
-        if(solidAtT(tx,ty)){blocked=true;break;}
+        const v=world[ty*W+tx];
+        if(TILES[v].solid){
+          if(POROUS[v])carry*=POROUS_ATT;
+          else{blocked=true;break;}
+        }
         d++;ty--;
       }
     }else blocked=true;
     for(let sy=0;sy<LH;sy++){
       const yy=y0+sy;
       const i=sy*LW+sx;
-      if(yy<0){openArr[i]=1;lightArr[i]=1;d=0;continue;}
+      if(yy<0){openArr[i]=1;lightArr[i]=1;d=0;carry=1;continue;}
       if(tx<0||tx>=W||yy>=H){lightArr[i]=0;continue;}
-      const s=TILES[world[yy*W+tx]].solid;
+      const v=world[yy*W+tx];
+      const s=TILES[v].solid;
       if(!blocked){
-        lightArr[i]=amb;
+        if(s&&POROUS[v])carry*=POROUS_ATT;
+        lightArr[i]=amb*carry;
         openArr[i]=s?0:1;
-        if(s){blocked=true;d=1;}
-        else d=Math.min(70,d+1);
+        if(s&&!POROUS[v]){blocked=true;d=1;}
+        else if(!s)d=Math.min(70,d+1);
       }else{
-        const l=Math.max(0,1-d*0.13)*amb;
+        const l=amb*carry*Math.max(0,1-d*0.13);
         if(l>lightArr[i])lightArr[i]=l;
         d=Math.min(70,d+1);
       }
@@ -2236,7 +2250,7 @@ window.TC={
   quickSave,
   get surf(){return surf;},
   collides:(x,y,w,h)=>collidesBox(x,y,w,h),
-  lightAt:(wx,wy)=>{const lx=Math.floor(camX/16)-1,ly=Math.floor(camY/16)-1;const sx=Math.round(wx/16-lx),sy=Math.round(wy/16-ly);if(sx<0||sx>=LW||sy<0||sy>=LH)return -1;return lightArr[sy*LW+sx];},
+  lightAt:(wx,wy)=>{const lx=Math.floor(camX/16)-1,ly=Math.floor(camY/16)-1;const sx=Math.floor(wx/16-lx),sy=Math.floor(wy/16-ly);if(sx<0||sx>=LW||sy<0||sy>=LH)return -1;return lightArr[sy*LW+sx];},
   get dayF(){return dayF;},
   get selected(){return selected;},
   setSelected:(v)=>{selected=v;},
