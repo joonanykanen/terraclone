@@ -950,6 +950,7 @@ function inReach(tx,ty){
 function updateMiningAndAttack(dt){
   if(!mouse.l){mining.p=0;return;}
   const p=player,tool=currentTool();
+  const isSword=tool.dmg>6; // swords (9+); pickaxes are 6, bare hands 4
   if(p.atkCd<=0){
     let hitAny=false;
     for(const e of entities){
@@ -966,6 +967,7 @@ function updateMiningAndAttack(dt){
       }
     }
     if(hitAny){p.atkCd=Math.max(0.16,tool.spd||0.3);p.swing=0.22;sfx('hit');}
+    else if(isSword){p.atkCd=tool.spd||0.3;p.swing=0.22;sfx('swing');} // held sword keeps swinging at weapon speed
     else if(mouse.ljust){p.atkCd=0.3;p.swing=0.22;sfx('swing');}
   }
   const m=mouseTile();
@@ -982,6 +984,7 @@ function updateMiningAndAttack(dt){
     mining.snd=0;
     sfx('mine');
     burst(m.tx*16+8,m.ty*16+8,tileColor(t),2,1.6);
+    if(!isSword)p.swing=0.22; // pickaxe/bare hands: chop synced with the mining tick
   }
   if(mining.p>=1){breakTile(m.tx,m.ty);mining.p=0;}
 }

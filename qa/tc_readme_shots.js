@@ -144,8 +144,36 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(3000);
   await shot('snow');
 
-  /* 5. underground torch pocket, night */
-  console.log('underground setup:', await exec('return (function(){var x=TC.spawnCol,y=-1;for(var r=TC.surf[x]+6;r<180;r++){if(TC.world[r*400+x]===0&&TC.world[(r+1)*400+x]!==0&&TC.world[(r+1)*400+x]!==11){y=r;break;}}if(y<0)return "NO_POCKET";TC.setTile(x+1,y-1,11);TC.setGameTime(300*0.78);var p=TC.player;p.x=x*16+2;p.y=y*16-24;p.vy=0;p.vx=0;p.apex=p.y;p.hp=100;TC.mouse.x=-100;TC.mouse.y=-100;return "floor"+y;})();'));
+  /* 5. underground: torch-lit cave room with ore veins in the floor + a dug mining hole, night.
+     Searches for a genuinely wide cave (air run >=8 tiles, >=10 below the local surface) with a
+     5-wide flat floor and headroom; prefers rooms deep enough (depth >=25) that the surface/sky
+     is outside the 45-tile-tall camera, so the shot is a bright enclosed chamber, not a hollow. */
+  console.log('underground setup:', await exec('return (function(){' +
+    'var Wd=400,cands=[];' +
+    'for(var r=46;r<186;r++){var c=5;' +
+    'while(c<Wd-5){' +
+    'if(TC.world[r*Wd+c]!==0){c++;continue;}' +
+    'var c0=c;while(c<Wd-5&&TC.world[r*Wd+c]===0)c++;var w=c-c0;' +
+    'if(w>=8){var bestF=-1,bestD=1e9,runC=c0+w/2;' +
+    'for(var x=c0;x+4<c;x++){var s=true;for(var k=0;k<5;k++)if(TC.world[(r+1)*Wd+x+k]===0)s=false;if(!s)continue;var dd=Math.abs(x+2-runC);if(dd<bestD){bestD=dd;bestF=x;}}' +
+    'if(bestF>=0){var pc=bestF+2;' +
+    'var depth=r-TC.surf[pc];' +
+    'if(depth>=10&&TC.world[(r-1)*Wd+pc]===0){var hh=0;for(var hr=r-1;hr>=r-4&&TC.world[hr*Wd+pc]===0;hr--)hh++;cands.push({x:bestF,r:r,w:w,hh:hh,depth:depth,d:Math.abs(pc-200)});}}}}}' +
+    'function pickBest(md,mw,mh){var b=null;cands.forEach(function(k){if(k.depth>=md&&k.w>=mw&&k.hh>=mh&&(b===null||k.d<b.d))b=k;});return b;}' +
+    'var pick=pickBest(25,12,2)||pickBest(25,8,2)||pickBest(25,12,1)||pickBest(25,8,1)'+
+    '||pickBest(18,12,2)||pickBest(18,8,2)||pickBest(18,12,1)||pickBest(18,8,1)'+
+    '||pickBest(12,12,1)||pickBest(12,8,1)||null;' +
+    'if(!pick)return "NO_ROOM";' +
+    'var fx=pick.x,r=pick.r,pc=fx+2,deep=r>148,mid=r>100;' +
+    'TC.setTile(pc-2,r,11);              /* torch on the floor, left of the player */' +
+    'TC.setTile(pc-1,r+1,7);             /* iron vein in the floor, between the torches */' +
+    'TC.setTile(pc+1,r+1,0);             /* dig a mining notch in the floor */' +
+    'TC.setTile(pc+1,r+2,deep?9:8);      /* gold/diamond at the bottom of the hole */' +
+    'TC.setTile(pc+2,r+1,mid?8:7);       /* gold (or iron) vein under the torch */' +
+    'TC.setTile(pc+2,r,11);              /* torch on the floor, right of the hole */' +
+    'TC.setGameTime(300*0.78);' +
+    'var p=TC.player;p.x=pc*16+2;p.y=r*16-8;p.vy=0;p.vx=0;p.face=1;p.apex=p.y;p.hp=100;TC.mouse.x=-100;TC.mouse.y=-100;' +
+    'return "room pc="+pc+" r="+r+" w="+pick.w+" hh="+pick.hh+" depth="+pick.depth;})();'));
   await sleep(1500);
   await shot('underground');
 
@@ -156,9 +184,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(3800);
   await shot('boss');
 
-  /* 7. inventory & crafting UI, day, clean background (clear the boss from shot 6) */
+  /* 7. inventory & crafting UI, day, clean background (clear the boss from shot 6). */
+  /* NOTE: empty the live entities array rather than flagging dead — while the UI is open,
+     update() skips updateEntities, so dead entities are never spliced and would keep rendering. */
   console.log('inventory setup:', await exec(goBiome(0, 0.20, 4)));
-  await exec('return (function(){TC.entities.forEach(function(e){e.dead=true;});TC.setUI(false);var i=TC.inv;var p=TC.player;p.hp=100;' +
+  await exec('return (function(){TC.entities.length=0;TC.setUI(false);var i=TC.inv;var p=TC.player;p.hp=100;' +
     'i[0]={id:"pick_iron",count:1};i[1]={id:"sword_iron",count:1};i[2]={id:"torch",count:16};i[3]={id:"gel",count:15};i[4]={id:"iron_bar",count:5};i[5]={id:"wood",count:30};i[6]={id:"potion",count:3};' +
     'for(var k=7;k<10;k++)i[k]=null;for(var m=10;m<50;m++)i[m]=null;' +
     'i[10]={id:"iron_ore",count:20};i[11]={id:"potion_greater",count:2};i[12]={id:"crown",count:1};' +
