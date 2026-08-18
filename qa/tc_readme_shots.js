@@ -114,7 +114,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       + 'for(var c=10;c<390;c++){if(TC.biome[c]!==' + biome + ')continue;var s=TC.surf[c];if(s<35||s>110)continue;var ok=true;'
       + 'for(var x=c-' + flat + ';ok&&x<=c+' + flat + ';x++){'
       + 'if(TC.biome[x]!==' + biome + ')ok=false;'
-      + 'for(var r=TC.surf[x]-9;r<TC.surf[x];r++){if(TC.world[r*400+x]===5){ok=false;break;}}'
+      + 'for(var r=TC.surf[x]-9;r<TC.surf[x];r++){var v=TC.world[r*400+x];if(v===5||v===6){ok=false;break;}}'
       + 'if(Math.abs(TC.surf[x]-s)>' + range + ')ok=false;}'
       + 'if(!ok)continue;var d=Math.abs(c-200);if(d<bd){bd=d;best=c;}}'
       + 'if(best<0)return "NO_BIOME";TC.setGameTime(300*' + timePh + ');'
@@ -140,7 +140,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await shot('hero_night');
 
   /* 4. snow biome, day (no flat-horizon requirement — rolling snow is fine, just need a trunk-free player column) */
-  console.log('snow setup:', await exec('return (function(){var best=-1,bd=999;for(var c=10;c<390;c++){if(TC.biome[c]!==2)continue;var s=TC.surf[c];if(s<35||s>110)continue;var ok=true;for(var r=s-9;r<s;r++){if(TC.world[r*400+c]===5){ok=false;break;}}if(!ok)continue;var d=Math.abs(c-200);if(d<bd){bd=d;best=c;}}if(best<0)return "NO_SNOW";TC.setGameTime(300*0.25);var p=TC.player;p.x=best*16-6;p.y=TC.surf[best]*16-25;p.vy=0;p.vx=0;p.apex=p.y;p.hp=100;TC.mouse.x=-100;TC.mouse.y=-100;return "col"+best;})();'));
+  console.log('snow setup:', await exec('return (function(){var best=-1,bd=999;for(var c=10;c<390;c++){if(TC.biome[c]!==2)continue;var s=TC.surf[c];if(s<35||s>110)continue;var ok=true;for(var r=s-9;r<s;r++){var v=TC.world[r*400+c];if(v===5||v===6){ok=false;break;}}if(!ok)continue;var d=Math.abs(c-200);if(d<bd){bd=d;best=c;}}if(best<0)return "NO_SNOW";TC.setGameTime(300*0.25);var p=TC.player;p.x=best*16-6;p.y=TC.surf[best]*16-25;p.vy=0;p.vx=0;p.apex=p.y;p.hp=100;TC.mouse.x=-100;TC.mouse.y=-100;return "col"+best;})();'));
   await sleep(3000);
   await shot('snow');
 

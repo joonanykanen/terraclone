@@ -55,7 +55,7 @@ const TILES=[
  {name:'Grass',solid:true,hard:1.1,req:0.0,drop:'dirt'},
  {name:'Sand',solid:true,hard:0.8,req:0.0,drop:'sand'},
  {name:'Wood',solid:true,hard:1.3,req:0.0,drop:'wood'},
- {name:'Leaves',solid:false,hard:0.4,req:0.0,drop:null},
+ {name:'Leaves',solid:true,hard:0.4,req:0.0,drop:null},
  {name:'Iron Ore',solid:true,hard:4.0,req:0.35,drop:'iron_ore'},
  {name:'Gold Ore',solid:true,hard:5.0,req:0.55,drop:'gold_ore'},
  {name:'Diamond Ore',solid:true,hard:6.0,req:0.75,drop:'dia_ore'},
@@ -434,8 +434,10 @@ function genWorld(){
       for(let x=cand-3;ok&&x<=cand+3;x++)
         if(surf[x]<surf[cand])ok=false;   // no ground higher than spawn within ±3 (no step-ups to walk into)
       for(let x=cand-3;ok&&x<=cand+3;x++)
-        for(let y=Math.max(0,surf[x]-9);y<surf[x];y++)
-          if(world[idx(x,y)]===T.WOOD){ok=false;break;}
+        for(let y=Math.max(0,surf[x]-9);y<surf[x];y++){
+          const v=world[idx(x,y)];
+          if(v===T.WOOD||v===T.LEAVES){ok=false;break;}   // no trunks or canopies in the window (never spawn under a crown)
+        }
       if(ok){spawnCol=cand;found=true;break;}
     }
   }
@@ -452,15 +454,26 @@ function genWorld(){
       surf[x]=level;
     }
   }
-  // final safety: clear trunks around the spawn and force the spawn box to be clear
+  // final safety: clear trunks around the spawn — removing each tree's whole canopy with it
+  // (not a blunt window clear, which would lop edges off neighboring intact trees)
   for(let x=spawnCol-3;x<=spawnCol+3;x++)
     for(let y=Math.max(0,surf[x]-9);y<surf[x];y++)
-      if(world[idx(x,y)]===T.WOOD)world[idx(x,y)]=T.AIR;
+      if(world[idx(x,y)]===T.WOOD){
+        let ty=y;
+        while(ty>0&&world[idx(x,ty-1)]===T.WOOD)ty--;   // top of this trunk
+        for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=0;dy++){  // exactly this tree's canopy footprint
+          const xx=x+dx,yy=ty+dy;
+          if(xx<0||xx>=W||yy<0)continue;
+          const v=world[idx(xx,yy)];
+          if(v===T.LEAVES||v===T.SNOW)world[idx(xx,yy)]=T.AIR;
+        }
+        world[idx(x,y)]=T.AIR;
+      }
   const sb=surf[spawnCol];
   for(let x=spawnCol-1;x<=spawnCol;x++)
     for(let y=Math.max(0,sb-2);y<=sb-1;y++){
       const v=world[idx(x,y)];
-      if(v!==T.AIR&&v!==T.LEAVES&&v!==T.TORCH)world[idx(x,y)]=T.AIR;
+      if(v!==T.AIR&&v!==T.TORCH)world[idx(x,y)]=T.AIR;  // spawn box fully clear (leaves are solid now)
     }
 }
 function getT(x,y){if(x<0||x>=W||y<0||y>=H)return T.BEDROCK;return world[y*W+x];}
@@ -489,7 +502,7 @@ let selected=0, uiOpen=false, recScroll=0, drag=null;
 let gameTime=CYCLE*0.08, dayF=1, night=false, dayNum=1;
 let entities=[],drops=[],parts=[],snowP=[],sandP=[],notes=[];
 let mining={tx:-1,ty:-1,p:0,snd:0};
-let shake=0, camX=0, camY=0, deathT=0, spawnT=2;
+let shake=0, camX=0, camY=0, deathT=0, spawnT=2, leafT=0;
 let uiRegions=[];
 const player={x:0,y:0,w:12,h:24,vx:0,vy:0,face:1,onGround:false,hp:100,inv:0,coyote:0,jbuf:0,jheld:false,atkCd:0,swing:0,walk:0,apex:0,dead:false,hurtCd:99,regenT:0};
 let spawnX=0;
@@ -1136,6 +1149,36 @@ function updateMusicZone(){
   if(key!==musicKey){musicKey=key;onMusicChange();}
 }
 /* ============================ main update ============================ */
+/* leaves with no wood within Chebyshev distance 3 crumble away gradually (Minecraft/Terraria-style decay);
+   stateless periodic pass so there is no per-leaf stored state and saves stay byte-compatible */
+function updateLeafDecay(dt){
+  leafT+=dt;
+  if(leafT<0.5)return;
+  leafT-=0.5;
+  const orphans=[];
+  for(let y=3;y<H-3;y++){
+    const row=y*W;
+    for(let x=4;x<W-4;x++){
+      if(world[row+x]!==T.LEAVES)continue;
+      let sup=false;
+      for(let dy=-3;dy<=3&&!sup;dy++){
+        const ry=row+dy*W;
+        for(let dx=-3;dx<=3;dx++)if(world[ry+x+dx]===T.WOOD){sup=true;break;}
+      }
+      if(!sup)orphans.push(row+x);
+    }
+  }
+  if(!orphans.length)return;
+  let removed=0;
+  for(let i=0;i<orphans.length&&removed<16;i++){
+    if(Math.random()<0.5){
+      const p=orphans[i];
+      world[p]=T.AIR;
+      burst((p%W)*16+8,((p/W)|0)*16+8,'#3e8e3e',1,1.2);
+      removed++;
+    }
+  }
+}
 function update(dt){
   const di=dayInfo();
   dayF=di.dayF;night=di.night;dayNum=di.day;
@@ -1145,6 +1188,7 @@ function update(dt){
     updateEntities(dt);
     updateSpawns(dt);
     updateMiningAndAttack(dt);
+    updateLeafDecay(dt);
   }else if(player.dead){
     gameTime+=dt;
     deathT-=dt;
