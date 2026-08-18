@@ -2043,7 +2043,7 @@ function drawUI(){
   g.strokeStyle='#000000';g.lineWidth=1.5;g.stroke();
   g.fillStyle='#ffffff';g.textAlign='left';g.font='bold 12px monospace';
   g.fillText('DEF '+def,dx2+16,18);
-  const king=entities.find(e=>e.type==='king');
+  const king=entities.find(e=>e.type==='king'&&!e.dead);
   if(king){
     const bw=460,bx=(CW-bw)/2,by=16;
     g.fillStyle='rgba(0,0,0,0.6)';rr(g,bx,by,bw,26,5);g.fill();
