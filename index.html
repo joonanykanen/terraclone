@@ -295,7 +295,7 @@ function playerFrame(rows,armor){
         col=PCOL[ch];
         if(ac&&y>=8&&y<=12){
           if(ch==='S')col=y===8?ac[2]:(y===12?ac[1]:ac[0]); // bright shoulders, dark hem
-          else if(ch==='s')col=ac[1]; // sleeves
+          else if(ch==='s'&&y<11)col=ac[1]; // sleeves; the hand (last arm row) stays bare like MC
         }else if(al&&y>=13){
           if(ch==='P')col=al[0];
           else if(ch==='k')col=al[1];

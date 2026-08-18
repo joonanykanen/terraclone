@@ -143,7 +143,7 @@ const MAT = {
     var settled=Math.abs(TC.camX-(p.x-634))<0.004&&Math.abs(TC.camY-(p.y-368))<0.004;
     return {x:x,y:y,face:p.face,onGround:p.onGround,dead:p.dead,settled:settled,light:TC.lightAt(p.x+6,p.y+12),
       crown:px(4,0),dome:px(4,2),rim:px(3,3),faceSkin:px(4,4),eye:px(4,5),
-      shoulder:px(5,8),chest:px(5,10),sleeve:px(1,10),hem:px(5,12),
+      shoulder:px(5,8),chest:px(5,10),sleeve:px(1,10),hand:px(1,11),hem:px(5,12),
       belt:px(5,13),pants:px(4,15),boot:px(4,22)};
   })();`;
 
@@ -171,7 +171,7 @@ const MAT = {
     return {
       crown: BASE.hair, dome: BASE.hair, rim: BASE.hair,
       faceSkin: BASE.skin, eye: BASE.eye,
-      shoulder: BASE.shirt, chest: BASE.shirt, sleeve: BASE.skin, hem: BASE.shirt,
+      shoulder: BASE.shirt, chest: BASE.shirt, sleeve: BASE.skin, hand: BASE.skin, hem: BASE.shirt,
       belt: BASE.belt, pants: BASE.pants, boot: BASE.boots,
     };
   }
