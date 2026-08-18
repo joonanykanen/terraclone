@@ -6,6 +6,7 @@ Headless **Firefox Developer Edition** driven via **Marionette** (protocol 3: le
 |---|---|---|
 | `tc_browser_qa.js` | Visual scenario shots (day/night, biomes, torch lighting, boss, inventory, death screen) + checks report (dayF ramp, light gradient, entities, page errors) | `node qa/tc_browser_qa.js` |
 | `tc_save_qa.js` | 3-slot save/load suite — 19 checks: menu flow, click + F5 + pause-menu saves, full state restore fidelity, delete, all-slots-full routing | `node qa/tc_save_qa.js` |
+| `tc_armor_qa.js` | Worn-armor model — 10 checks: pixel-samples the player sprite with iron/gold/dia helm/chest/legs (full + per-piece sets), face/belt stay visible, jump + walk frames pick up the tint | `node qa/tc_armor_qa.js` |
 | `tc_readme_shots.js` | Captures the 8 README screenshots into `screenshots/` | `node qa/tc_readme_shots.js` |
 
 All scripts take an optional `index.html` path argument (default: repo root).

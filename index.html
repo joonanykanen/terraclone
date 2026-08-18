@@ -269,6 +269,59 @@ jump:[
 "............",
 "............"]
 };
+/* ---- worn armor: tint player frames with the equipped materials ---- */
+// shared material palette (also used by item icons): [main, dark, bright]
+const MC={iron:['#c9ced6','#8d939c','#e8ecf2'],gold:['#f2d23c','#c39a18','#ffe97a'],dia:['#5ce8f0','#2aa0ae','#c2f8fc'],wood:['#a06a38','#7a4c24','#c88c52']};
+// helmet covers the crown (rows 0-4) leaving the face open; chest piece is rows 8-12
+// (shoulders..shirt hem, arms included); legs cover rows 13+ (pants 'P', boots 'k')
+const HELM_MASK=[
+"....MMMM....",
+"...MMMMMM...",
+"...MMMMMM...",
+"...M....M...",
+"...M....M..."];
+const PF_TORSO={idle:PTORSO,walkA:PTORSO_ARMS,walkB:PTORSO,walkC:PTORSO_ARMS,walkD:PTORSO,jump:PTORSO};
+function playerFrame(rows,armor){
+  const w=rows[0].length,h=rows.length,c=mkCanvas(w,h),g=c.getContext('2d');
+  const ah=armor[0]?MC[armor[0]]:null,ac=armor[1]?MC[armor[1]]:null,al=armor[2]?MC[armor[2]]:null;
+  for(let y=0;y<h;y++){
+    const row=rows[y];
+    for(let x=0;x<w;x++){
+      const ch=row[x];
+      let col=null;
+      if(ah&&y<5&&HELM_MASK[y][x]==='M'){
+        col=y===0?ah[2]:(y<=2?ah[0]:ah[1]); // bright crown, main dome, dark face rim
+      }else if(ch!=='.'){
+        col=PCOL[ch];
+        if(ac&&y>=8&&y<=12){
+          if(ch==='S')col=y===8?ac[2]:(y===12?ac[1]:ac[0]); // bright shoulders, dark hem
+          else if(ch==='s')col=ac[1]; // sleeves
+        }else if(al&&y>=13){
+          if(ch==='P')col=al[0];
+          else if(ch==='k')col=al[1];
+        }
+      }
+      if(col){g.fillStyle=col;g.fillRect(x,y,1,1);}
+    }
+  }
+  return c;
+}
+function equippedArmor(){
+  const a=[null,null,null];
+  for(let i=0;i<3;i++){
+    const it=inv[50+i];
+    if(it){const I=ITEMS[it.id];if(I&&I.armor===i)a[i]=I.mat;}
+  }
+  return a;
+}
+let pSprKey=null;
+function buildPlayerSprites(){
+  const a=equippedArmor(),key=a.join('|');
+  if(key===pSprKey)return;
+  pSprKey=key;
+  for(const f in PF_TORSO)PSprites[f]=playerFrame(PF_TORSO[f].concat(PLEGS[f]),a);
+  PWHITE=whiteify(PSprites.idle);
+}
 const ZCOL={G:'#7fae4a',k:'#15151c',D:'#4a4a5a',P:'#3a3a44'};
 const ZROWS=[
 "..GGGGGG....",
@@ -314,15 +367,9 @@ const BATDN=[
 ".....W..W....." ];
 const PSprites={};let ZSPR=null,PWHITE=null,ZWHITE=null,BATSPR=null,BATWHITE=null;
 function buildSprites(){
-  PSprites.idle=spriteFromMap(PTORSO.concat(PLEGS.idle),PCOL);
-  PSprites.walkA=spriteFromMap(PTORSO_ARMS.concat(PLEGS.walkA),PCOL);
-  PSprites.walkB=spriteFromMap(PTORSO.concat(PLEGS.walkB),PCOL);
-  PSprites.walkC=spriteFromMap(PTORSO_ARMS.concat(PLEGS.walkC),PCOL);
-  PSprites.walkD=spriteFromMap(PTORSO.concat(PLEGS.walkD),PCOL);
-  PSprites.jump=spriteFromMap(PTORSO.concat(PLEGS.jump),PCOL);
+  buildPlayerSprites(); // armor-aware frames + white flash (rebuilds if slots change)
   ZSPR=spriteFromMap(ZROWS,ZCOL);
   BATSPR=[spriteFromMap(BATUP,BCOL),spriteFromMap(BATDN,BCOL)];
-  PWHITE=whiteify(PSprites.idle);
   ZWHITE=whiteify(ZSPR);
   BATWHITE=[whiteify(BATSPR[0]),whiteify(BATSPR[1])];
 }
@@ -337,7 +384,6 @@ function makeIcon(id){
     const oc={iron_ore:['#d8a066','#f0c890'],gold_ore:['#f2d23c','#ffe97a'],dia_ore:['#56e0e8','#b0f6fa']}[id];
     drawStoneBase(g);oreBlobs(g,oc[0],oc[1]);return c;
   }
-  const MC={iron:['#c9ced6','#8d939c','#e8ecf2'],gold:['#f2d23c','#c39a18','#ffe97a'],dia:['#5ce8f0','#2aa0ae','#c2f8fc'],wood:['#a06a38','#7a4c24','#c88c52']};
   if(id==='iron_bar'||id==='gold_bar'){
     const m=MC[id==='iron_bar'?'iron':'gold'];
     g.fillStyle=m[1];g.fillRect(2,8,12,5);g.fillStyle=m[0];g.fillRect(2,6,12,5);g.fillStyle=m[2];g.fillRect(3,7,10,1);g.fillStyle='rgba(0,0,0,0.3)';g.fillRect(2,10,12,2);
@@ -1591,6 +1637,7 @@ function drawDropsLayer(g){
 function drawPlayerLayer(g){
   const p=player;
   if(p.dead)return;
+  buildPlayerSprites(); // rebuild frames if the armor slots changed since last frame
   const f=!p.onGround?'jump':(Math.abs(p.vx)>0.4?['walkA','walkB','walkC','walkD'][(p.walk|0)%4]:'idle');
   const spr=PSprites[f];
   const bob=(f==='walkB'||f==='walkD')?1:0;   // body rises 1px on the leg-passing frames
