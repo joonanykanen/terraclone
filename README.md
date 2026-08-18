@@ -2,11 +2,11 @@
 
 A single-file 2D sandbox game inspired by Terraria. Everything — world generation, pixel art, lighting, and music — is procedurally created at runtime in one self-contained HTML file (~2,000 lines of plain JavaScript, no external libraries).
 
-[![Deploy to GitHub Pages](https://github.com/joonanykanen/terraria-clone/actions/workflows/deploy.yml/badge.svg)](https://github.com/joonanykanen/terraria-clone/actions/workflows/deploy.yml)
+[![Deploy to GitHub Pages](https://github.com/joonanykanen/terraclone/actions/workflows/deploy.yml/badge.svg)](https://github.com/joonanykanen/terraclone/actions/workflows/deploy.yml)
 
 ## Play
 
-- **Online:** [https://joonanykanen.github.io/terraria-clone/](https://joonanykanen.github.io/terraria-clone/)
+- **Online:** [https://joonanykanen.github.io/terraclone/](https://joonanykanen.github.io/terraclone/)
 - **Local:** Download [`index.html`](index.html) and open it in any modern browser.
 
 <picture>
