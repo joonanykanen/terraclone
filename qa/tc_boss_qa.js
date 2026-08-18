@@ -135,17 +135,83 @@ function check(name, cond, extra) {
   check('boss contact dmg is 44', stats && stats.dmg === 44);
   check('boss has spit timer + not enraged', stats && typeof stats.spitT === 'number' && stats.enraged === false);
 
-  /* ---- 2. live fight, NO armor: player must be in serious danger ---- */
-  await exec('return __stage(260,1)+";"+__killOther();');
-  await exec('window.__min=100;window.__died=false;window.__sawProj=false;window.__int=setInterval(function(){var p=TC.player;if(TC.projs.length>0)window.__sawProj=true;if(!p.dead){if(p.hp<window.__min)window.__min=p.hp;}else window.__died=true;},120);return "sampling";');
+  /* ---- 2. live fight, NO armor: player must be in serious danger (deterministic) ----
+     Boss is frozen (t=1e9, no hops — same trick as section 5) and parked on clear
+     ground; the player is placed 208-464 px away (always inside the boss 60-480 px
+     spit band) on flat ground with a verified clear line of sight to the boss head
+     (carved with setTile when the terrain blocks it), and is snapped back to the
+     spot once knockback settles. Spits fire every
+     2.3-3.3 s from spitT=2.5 and all land on the stationary player: >=3 hits (66
+     dmg) in the 10.5 s window. Previously the boss 100-170 px hops could keep it
+     outside the band (no spits at all) or trees could block aimed spits -> flaky. */
+  const staged = await exec(`
+    window.__stageFight=function(){
+      var k=null;TC.entities.forEach(function(e){if(e.type==="king"&&!e.dead)k=e;});
+      if(!k)return "no boss";
+      var W=400,S=16;
+      function air(tx,ty){return tx>=0&&tx<W&&ty>=0&&ty<200&&TC.world[ty*W+tx]===0;}
+      function los(x0,y0,x1,y1){var d=Math.hypot(x1-x0,y1-y0),n=Math.ceil(d/8);
+        for(var i=1;i<n;i++){var t=i/n;if(!air(Math.floor((x0+(x1-x0)*t)/S),Math.floor((y0+(y1-y0)*t)/S)))return false;}return true;}
+      var c0=Math.floor((k.x+k.w/2)/S),s0=TC.surf[c0],park=null;
+      for(var d=0;park===null&&d<=24;d++){var dirs=d?[1,-1]:[0];
+        for(var i=0;i<dirs.length;i++){var c=c0+dirs[i]*d;if(c<1||c>=399)continue;
+          var s=TC.surf[c];if(Math.abs(s-s0)>3)continue;
+          if(air(c,s-1)&&air(c,s-2)&&air(c,s-3)){park={c:c,s:s};break;}}}
+      if(!park)return "no parking col";
+      k.x=park.c*S-14;k.y=park.s*S-k.h-0.01;k.vx=0;k.vy=0;k.t=1e9;k.spitT=2.5;
+      var bx=k.x+k.w/2,by=k.y+10,note=""; // game's spit aim origin
+      // candidate player spots 13-29 tiles away (208-464 px: always inside the boss
+      // 60-480 px spit band even after knockback); prefer ~16 tiles and natural LOS
+      var best=null;
+      function consider(c2,s2,extra,allowLevel){
+        if(c2<2||c2>=399)return;
+        if(Math.abs(s2-park.s)>(allowLevel?6:2))return;
+        // player box spans columns c2-1..c2, rows s2-2..s2-1 — whole footprint must be clear
+        if(!air(c2-1,s2-1)||!air(c2-1,s2-2)||!air(c2,s2-1)||!air(c2,s2-2))return;
+        if(allowLevel&&s2<park.s&&(!air(c2,park.s)||!air(c2-1,park.s)))return; // digging must land on solid
+        var nat=los(bx,by,c2*S,s2*S-16);
+        var score=Math.abs(Math.abs(c2-park.c)-16)+(nat?0:100)+extra;
+        if(!best||score<best.score)best={c:c2,s:s2,carve:nat?0:1,level:allowLevel,score:score};
+      }
+      for(var d2=13;d2<=29;d2++){consider(park.c-d2,TC.surf[park.c-d2],0,false);consider(park.c+d2,TC.surf[park.c+d2],0,false);}
+      if(!best)for(var d3=13;d3<=29;d3++){consider(park.c-d3,TC.surf[park.c-d3],200,true);consider(park.c+d3,TC.surf[park.c+d3],200,true);}
+      if(!best)return "no player spot";
+      var spot=best;
+      if(spot.level){
+        for(var cc=[spot.c,spot.c-1],ci=0;ci<2;ci++){var ccc=cc[ci],s1=TC.surf[ccc];
+          if(s1>park.s)for(var r=s1;r>=park.s;r--)TC.setTile(ccc,r,1);
+          else if(s1<park.s)for(var r2=s1;r2<park.s;r2++)TC.setTile(ccc,r2,0);
+          if(!air(ccc,park.s-1))TC.setTile(ccc,park.s-1,0);
+          if(!air(ccc,park.s-2))TC.setTile(ccc,park.s-2,0);}
+        note=" leveled";spot.s=park.s;spot.carve=1;
+      }
+      if(spot.carve){
+        var px3=spot.c*S,py3=spot.s*S-16,d3=Math.hypot(px3-bx,py3-by),n3=Math.ceil(d3);
+        for(var i3=1;i3<n3;i3++){var x3=bx+(px3-bx)*(i3/n3),y3=by+(py3-by)*(i3/n3);
+          var tx=Math.floor(x3/S),ty=Math.floor(y3/S);
+          for(var rr=ty-1;rr<=ty+1;rr++){
+            if(rr<0)continue;
+            if(tx===spot.c&&rr>=spot.s)continue; // never open the floor under the player
+            if(!air(tx,rr))TC.setTile(tx,rr,0);}}
+        if(!spot.level)note=" carved";
+      }
+      var p=TC.player;p.x=spot.c*S-6;p.y=spot.s*S-25;p.vx=0;p.vy=0;p.face=spot.c>park.c?1:-1;p.apex=p.y;p.hp=100;p.inv=0;p.dead=false;p.hurtCd=99;
+      window.__spot={x:p.x,y:p.y};
+      return "boss col"+park.c+" player col"+spot.c+" dist"+(Math.abs(spot.c-park.c)*S)+"px"+(note?" "+note:" (natural LOS)");
+    };
+    __killOther();return __stageFight();`);
+  console.log('  staged:', staged);
+  await exec('window.__min=100;window.__died=false;window.__sawProj=false;window.__int=setInterval(function(){var p=TC.player;if(TC.projs.length>0)window.__sawProj=true;if(!p.dead){if(p.hp<window.__min)window.__min=p.hp;if(window.__spot&&p.onGround&&Math.abs(p.vx)<0.5&&(Math.abs(p.x-window.__spot.x)>10||Math.abs(p.y-window.__spot.y)>10)){p.x=window.__spot.x;p.y=window.__spot.y;p.vx=0;p.vy=0;p.apex=p.y;}}else window.__died=true;},120);return "sampling";');
   await sleep(1000);
   await shot('boss2');
-  await sleep(6500);
+  await sleep(9500);
   await exec('clearInterval(window.__int);return true;');
   const fight = await exec('return {min:window.__min,died:window.__died,sawProj:window.__sawProj,hp:TC.player.hp,dead:TC.player.dead};');
   console.log('  no-armor fight:', JSON.stringify(fight));
   check('player saw gel spits during fight', fight.sawProj === true);
   check('no-armor player is in real danger (min hp < 60 or died)', fight.min < 60 || fight.died === true, 'min=' + fight.min + ' died=' + fight.died);
+  // unfreeze the boss so later sections can move it naturally
+  await exec('return (function(){var k=null;TC.entities.forEach(function(e){if(e.type==="king")k=e;});if(k){k.t=1.5;k.spitT=2.5;}return "unfrozen";})();');
 
   /* ---- 3. boss damage ignores half armor (wither-style) ---- */
   await exec('return (function(){var inv=TC.inv;inv[50]={id:"armor_dia_helm",count:1};inv[51]={id:"armor_dia_chest",count:1};inv[52]={id:"armor_dia_legs",count:1};var p=TC.player;p.hp=100;p.inv=0;p.dead=false;return "dia equipped";})();');
