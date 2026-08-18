@@ -540,7 +540,7 @@ function airClear(x,y,w,h){
 const inv=new Array(53).fill(null); // 0-9 hotbar, 10-49 main grid (40), 50-52 armor
 let selected=0, uiOpen=false, recScroll=0, drag=null;
 let gameTime=CYCLE*0.08, dayF=1, night=false, dayNum=1;
-let entities=[],drops=[],parts=[],snowP=[],sandP=[],notes=[];
+let entities=[],drops=[],parts=[],snowP=[],sandP=[],notes=[],projs=[];
 let mining={tx:-1,ty:-1,p:0,snd:0};
 let shake=0, camX=0, camY=0, deathT=0, spawnT=2, leafT=0;
 let uiRegions=[];
@@ -762,6 +762,9 @@ function sfx(name){
     case 'splat':blip(130,45,0.14,'sine',0.4);noise(0.12,300,0.7,0.25);break;
     case 'use':blip(340,520,0.05,'sine',0.18);blip(420,640,0.05,'sine',0.18,0.06);blip(520,760,0.06,'sine',0.18,0.12);break;
     case 'summon':blip(55,55,0.7,'sawtooth',0.4);blip(180,640,0.6,'sawtooth',0.15,0.15);break;
+    case 'spit':blip(300,540,0.09,'square',0.2);noise(0.07,900,1,0.1);break;
+    case 'thump':noise(0.18,140,0.8,0.3);blip(90,45,0.16,'sine',0.3);break;
+    case 'roar':blip(120,48,0.5,'sawtooth',0.3);blip(60,160,0.4,'sawtooth',0.14,0.1);noise(0.3,300,0.7,0.18,0.05);break;
   }
 }
 /* ============================ day / night ============================ */
@@ -864,14 +867,15 @@ function updatePlayer(dt){
   if(p.hp<100&&p.hurtCd>4){p.regenT+=dt;if(p.regenT>=0.8){p.regenT=0;p.hp=Math.min(100,p.hp+1);}}
   else p.regenT=0;
 }
-function hurtPlayer(dmg,srcX){
+function hurtPlayer(dmg,srcX,boss){
   const p=player;
   if(p.inv>0||p.dead)return;
-  const d=Math.max(1,dmg-defense());
+  // boss attacks ignore half of armor (wither-style): gear helps but never trivializes the fight
+  const d=Math.max(1,Math.round(dmg-(boss?defense()*0.5:defense())));
   p.hp-=d;p.inv=0.7;p.hurtCd=0;
   sfx('hurt');shake=Math.max(shake,3);
-  p.vx=(p.x+p.w/2<srcX)?-3.6:3.6;
-  p.vy=-3.8;
+  p.vx=(p.x+p.w/2<srcX)?(boss?-4.8:-3.6):(boss?4.8:3.6);
+  p.vy=boss?-4.6:-3.8;
   if(p.hp<=0){p.hp=0;die();}
 }
 function die(){
@@ -908,9 +912,10 @@ function spawnBoss(){
   const side=Math.random()<0.5?-1:1;
   const x=clamp(player.x+player.w/2+side*380,80,W*16-80);
   const s=surf[clamp(Math.floor(x/16),0,W-1)];
-  const e={type:'king',x:x-22,y:s*16-40,w:44,h:32,vx:0,vy:0,t:1.5,touch:0,flash:0,ph:0,onGround:false,hitWall:false,dead:false,face:1,small:false,hp:500,maxhp:500,dmg:25,c1:'#b45ce8',c2:'#6d2f9e'};
+  const e={type:'king',x:x-22,y:s*16-40,w:44,h:32,vx:0,vy:0,t:1.5,touch:0,flash:0,ph:0,onGround:false,hitWall:false,dead:false,face:1,small:false,hp:950,maxhp:950,dmg:44,spitT:2.5,enraged:false,dmgM:1,c1:'#b45ce8',c2:'#6d2f9e'};
   entities.push(e);
   notify('The Slime Crown pulses... the King Slime awakens!');
+  notify('It spits gel and smashes the ground. Bring potions!');
   sfx('summon');shake=6;
 }
 function killEntity(e){
@@ -923,8 +928,10 @@ function killEntity(e){
     for(let i=0;i<n;i++)spawnDrop(e.x+e.w/2,e.y+e.h/2,'gel',1);
   }
   if(e.type==='king'){
-    const n=6+((Math.random()*3)|0);
+    const n=8+((Math.random()*4)|0);
     for(let i=0;i<n;i++)spawnDrop(e.x+e.w/2,e.y+e.h/2,'coin',1);
+    const g2=3+((Math.random()*3)|0);
+    for(let i=0;i<g2;i++)spawnDrop(e.x+e.w/2,e.y+e.h/2,'gel',1);
     for(let i=0;i<3;i++){
       const s2=makeEntity('slime',e.x-10+i*16,e.y);
       s2.small=true;s2.w=14;s2.h=10;s2.hp=12;s2.dmg=4;s2.c1='#7ae87a';s2.c2='#3fae3f';
@@ -956,17 +963,64 @@ function updateEntities(dt){
     e.flash=Math.max(0,e.flash-dt);
     e.touch-=dt;
     const pcx=player.x+player.w/2;
-    if(e.type==='slime'||e.type==='king'){
+    if(e.type==='king'){
+      // enrage below 30% HP: faster, angrier, redder
+      if(!e.enraged&&e.hp<=e.maxhp*0.3){
+        e.enraged=true;e.dmgM=1.15;
+        e.c1='#e05a76';e.c2='#8e2a52';
+        notify('The King Slime is ENRAGED!');
+        sfx('roar');shake=Math.max(shake,6);
+      }
       e.vy+=0.38;
       e.ph+=dt*(e.onGround?1.5:6);
       e.t-=dt;
       if(e.onGround){
         e.vx*=0.8;
         if(e.t<=0){
-          e.t=e.type==='king'?0.8+Math.random()*0.9:0.7+Math.random()*1.8;
-          e.vy=e.type==='king'?-(8.2+Math.random()*1.8):-(4.2+Math.random()*2.6)*(e.small?0.75:1);
+          const jm=e.enraged?1.15:1;
+          e.t=e.enraged?0.5+Math.random()*0.55:0.8+Math.random()*0.9;
+          e.vy=-(8.2+Math.random()*1.8)*jm;
           const dir=Math.random()<0.75?(Math.sign(pcx-(e.x+e.w/2))||1):(Math.random()<0.5?-1:1);
-          e.vx=dir*(e.type==='king'?2.4+Math.random()*1.6:(e.small?0.8+Math.random()*0.8:1.1+Math.random()*1.3));
+          e.vx=dir*(2.4+Math.random()*1.6)*jm;
+          e.face=dir>0?1:-1;
+        }
+      }
+      // gel spit: aimed ranged attack, swattable
+      e.spitT-=dt;
+      if(e.spitT<=0&&!player.dead){
+        const dx=pcx-(e.x+e.w/2),dy=(player.y+8)-(e.y+10);
+        const dist=Math.hypot(dx,dy);
+        if(dist>60&&dist<480&&projs.length<3){
+          const sp=e.enraged?6.2:5.2;
+          e.spitT=e.enraged?1.3+Math.random()*0.8:2.3+Math.random()*1.0;
+          projs.push({x:e.x+e.w/2-5,y:e.y+4,vx:dx/dist*sp,vy:dy/dist*sp,dmg:Math.round(22*e.dmgM),t:3.2});
+          sfx('spit');
+        }else e.spitT=0.5;
+      }
+      const impact=e.vy;
+      physEnt(e);
+      // landing shockwave: don't stand under the boss
+      if(e.onGround&&impact>=9.0){
+        const shx=pcx-(e.x+e.w/2),shy=(player.y+player.h/2)-(e.y+e.h);
+        if(Math.abs(shx)<100&&Math.abs(shy)<36&&!player.dead){
+          hurtPlayer(Math.round(24*e.dmgM),e.x+e.w/2,true);
+          if(player.inv>0)player.vy=-5.2;
+        }
+        burst(e.x+e.w/2,e.y+e.h,e.c1,10,2.6);
+        shake=Math.max(shake,4);
+        sfx('thump');
+      }
+    }else if(e.type==='slime'){
+      e.vy+=0.38;
+      e.ph+=dt*(e.onGround?1.5:6);
+      e.t-=dt;
+      if(e.onGround){
+        e.vx*=0.8;
+        if(e.t<=0){
+          e.t=0.7+Math.random()*1.8;
+          e.vy=-(4.2+Math.random()*2.6)*(e.small?0.75:1);
+          const dir=Math.random()<0.75?(Math.sign(pcx-(e.x+e.w/2))||1):(Math.random()<0.5?-1:1);
+          e.vx=dir*(e.small?0.8+Math.random()*0.8:1.1+Math.random()*1.3);
           e.face=dir>0?1:-1;
         }
       }
@@ -991,7 +1045,24 @@ function updateEntities(dt){
     }
     if(e.touch<=0&&!player.dead&&boxesOverlap(e,player)){
       e.touch=0.9;
-      hurtPlayer(e.dmg,e.x+e.w/2);
+      hurtPlayer(e.dmg,e.x+e.w/2,e.type==='king');
+    }
+  }
+}
+function updateProjs(dt){
+  for(let i=projs.length-1;i>=0;i--){
+    const pr=projs[i];
+    pr.t-=dt;
+    pr.x+=pr.vx;pr.y+=pr.vy;
+    const tx=Math.floor((pr.x+5)/16),ty=Math.floor((pr.y+5)/16);
+    if(pr.t<=0||getT(tx,ty)!==T.AIR){
+      burst(pr.x+5,pr.y+5,'#7ae87a',6,2);
+      projs.splice(i,1);continue;
+    }
+    if(!player.dead&&boxesOverlap({x:pr.x,y:pr.y,w:10,h:10},player)){
+      hurtPlayer(pr.dmg,pr.x+5,true);
+      burst(pr.x+5,pr.y+5,'#7ae87a',8,2.4);
+      projs.splice(i,1);
     }
   }
 }
@@ -1053,6 +1124,17 @@ function updateMiningAndAttack(dt){
         burst(e.x+e.w/2,e.y+e.h/2,'#ffe89a',5,2.4);
         hitAny=true;
         if(e.hp<=0)killEntity(e);
+      }
+    }
+    for(let i=projs.length-1;i>=0;i--){ // swat gel spits out of the air
+      const pr=projs[i];
+      const ex=pr.x+5-p.x-p.w/2,ey=pr.y+5-p.y-p.h/2;
+      const d=Math.hypot(ex,ey);
+      if(d<56&&(Math.abs(ex)<34||(p.face>0?ex>0:ex<0))){
+        burst(pr.x+5,pr.y+5,'#7ae87a',7,2.2);
+        sfx('splat');
+        projs.splice(i,1);
+        hitAny=true;
       }
     }
     if(hitAny){p.atkCd=Math.max(0.16,tool.spd||0.3);p.swing=0.22;sfx('hit');}
@@ -1267,6 +1349,7 @@ function update(dt){
     gameTime+=dt;
     updatePlayer(dt);
     updateEntities(dt);
+    updateProjs(dt);
     updateSpawns(dt);
     updateMiningAndAttack(dt);
     updateLeafDecay(dt);
@@ -1485,6 +1568,12 @@ function drawEntitiesLayer(g){
       drawBlob(g,e);
     }
   }
+  for(const pr of projs){
+    const x=(pr.x-camX)|0,y=(pr.y-camY)|0;
+    g.fillStyle='#3fae3f';g.beginPath();g.arc(x+5,y+5,5,0,7);g.fill();
+    g.fillStyle='#7ae87a';g.beginPath();g.arc(x+4,y+4,3.4,0,7);g.fill();
+    g.fillStyle='rgba(255,255,255,0.5)';g.fillRect(x+2,y+2,2,2);
+  }
 }
 function drawDropsLayer(g){
   g.textBaseline='top';
@@ -1690,7 +1779,7 @@ function loadSaveState(s){
   entities=[];
   (s.e||[]).forEach(es=>{
     if(es.t==='king'){
-      entities.push({type:'king',x:es.x,y:es.y,vx:es.vx||0,vy:es.vy||0,t:1.5,touch:0,flash:0,ph:0,onGround:false,hitWall:false,dead:false,face:1,small:false,w:44,h:32,hp:es.hp!=null?es.hp:500,maxhp:500,dmg:25,c1:'#b45ce8',c2:'#6d2f9e'});
+      entities.push({type:'king',x:es.x,y:es.y,vx:es.vx||0,vy:es.vy||0,t:1.5,touch:0,flash:0,ph:0,onGround:false,hitWall:false,dead:false,face:1,small:false,w:44,h:32,hp:es.hp!=null?es.hp:950,maxhp:950,dmg:44,spitT:2.5,enraged:false,dmgM:1,c1:'#b45ce8',c2:'#6d2f9e'});
     }else if(['slime','zombie','bat'].indexOf(es.t)>=0){
       const e=makeEntity(es.t,0,0);
       e.x=es.x;e.y=es.y;e.vx=es.vx||0;e.vy=es.vy||0;
@@ -1749,7 +1838,7 @@ function startNewWorld(slotIdx){
   inv[0]={id:'pick_wood',count:1};
   inv[1]={id:'sword_wood',count:1};
   inv[2]={id:'torch',count:6};
-  entities=[];drops=[];parts=[];snowP=[];sandP=[];notes=[];
+  entities=[];drops=[];parts=[];snowP=[];sandP=[];notes=[];projs=[];
   mining={tx:-1,ty:-1,p:0,snd:0};
   shake=0;selected=0;recScroll=0;uiOpen=false;drag=null;
   deathT=0;spawnT=2;
@@ -2191,7 +2280,7 @@ function drawUI(){
     const bw=460,bx=(CW-bw)/2,by=16;
     g.fillStyle='rgba(0,0,0,0.6)';rr(g,bx,by,bw,26,5);g.fill();
     g.fillStyle='#7a1a2a';g.fillRect(bx+3,by+13,bw-6,10);
-    g.fillStyle='#e04858';g.fillRect(bx+3,by+13,(bw-6)*king.hp/king.maxhp,10);
+    g.fillStyle=king.enraged?'#ff7a3a':'#e04858';g.fillRect(bx+3,by+13,(bw-6)*king.hp/king.maxhp,10);
     g.fillStyle='#ffffff';g.textAlign='center';g.font='bold 12px monospace';
     g.fillText('K I N G   S L I M E',CW/2,by+2);
     g.textAlign='left';
@@ -2278,6 +2367,7 @@ window.TC={
   setGameTime:(t)=>{gameTime=t;},
   get biome(){return biome;},
   get drops(){return drops;},
+  get projs(){return projs;},
   get notes(){return notes;},
   get mouse(){return mouse;},
   get keys(){return keys;},
