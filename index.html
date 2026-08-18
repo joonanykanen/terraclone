@@ -192,6 +192,12 @@ const PTORSO=[
 "....SSSS....",
 "...bbbbbb...",
 ];
+// same torso with arms swinging out (used on the stride frames; arms are opposite the legs)
+const PTORSO_ARMS=PTORSO.slice(0,9).concat([
+".sSSSSSSSs..",
+"s.SSSSSSS.s.",
+"s.SSSSSSS.s."
+]).concat(PTORSO.slice(12));
 const PLEGS={
 idle:[
 "...PPPPPP...",
@@ -204,28 +210,53 @@ idle:[
 "...PPP.PP...",
 "...kkk.kk...",
 "..kkk..kkk.."],
+// 4-frame run cycle: stride (front leg planted, back toe dragging) -> pass (feet under the
+// body, rendered 1px up) -> mirrored stride -> pass. The old 2-frame splay/together
+// alternate read as a pogo-stick scissor, so the phase is now a real stride.
 walkA:[
 "...PPPPPP...",
-"..PPPP.PPPP.",
-".PPP.....PPP",
-".PP.......PP",
-".PP.......PP",
-".PP.......PP",
-"............",
-"............",
-".kk.......kk",
-".kkk.....kkk"],
+"..PPPP.PP...",
+"..PPP..PP...",
+".PPP...PP...",
+".PP....PP...",
+".P.....PP...",
+"k......PP...",
+"kk.....PP...",
+"k......kkk..",
+".......kkk.."],
 walkB:[
 "...PPPPPP...",
-"....PPPP....",
-"....PPPP....",
-"....PPPP....",
-"....PPPP....",
-"....PPPP....",
-"....PPPP....",
-"....PPPP....",
-"....kkkk....",
-"....kkkk...."],
+"...PPPPPP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...kkk.kk...",
+"...kkk.kk..."],
+walkC:[
+"...PPPPPP...",
+"...PP.PPPP..",
+"...PP..PPP..",
+"...PP...PPP.",
+"...PP....PP.",
+"...PP.....P.",
+"...PP......k",
+"...PP.....kk",
+"..kkk......k",
+"..kkk......."],
+walkD:[
+"...PPPPPP...",
+"...PPPPPP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...PPP.PP...",
+"...kkk.kk...",
+"...kkk.kk..."],
 jump:[
 "...PPPPPP...",
 "...PPP.PP...",
@@ -283,7 +314,12 @@ const BATDN=[
 ".....W..W....." ];
 const PSprites={};let ZSPR=null,PWHITE=null,ZWHITE=null,BATSPR=null,BATWHITE=null;
 function buildSprites(){
-  for(const k of ['idle','walkA','walkB','jump']) PSprites[k]=spriteFromMap(PTORSO.concat(PLEGS[k]),PCOL);
+  PSprites.idle=spriteFromMap(PTORSO.concat(PLEGS.idle),PCOL);
+  PSprites.walkA=spriteFromMap(PTORSO_ARMS.concat(PLEGS.walkA),PCOL);
+  PSprites.walkB=spriteFromMap(PTORSO.concat(PLEGS.walkB),PCOL);
+  PSprites.walkC=spriteFromMap(PTORSO_ARMS.concat(PLEGS.walkC),PCOL);
+  PSprites.walkD=spriteFromMap(PTORSO.concat(PLEGS.walkD),PCOL);
+  PSprites.jump=spriteFromMap(PTORSO.concat(PLEGS.jump),PCOL);
   ZSPR=spriteFromMap(ZROWS,ZCOL);
   BATSPR=[spriteFromMap(BATUP,BCOL),spriteFromMap(BATDN,BCOL)];
   PWHITE=whiteify(PSprites.idle);
@@ -740,11 +776,11 @@ function updatePlayer(dt){
   else{p.vx*=p.onGround?0.72:0.92;if(Math.abs(p.vx)<0.05)p.vx=0;}
   p.vx=clamp(p.vx,-maxv,maxv);
   const jk=keys.Space||keys.KeyW||keys.ArrowUp;
-  if(jk&&!p.jheld)p.jbuf=0.12;
+  if(jk&&!p.jheld)p.jbuf=0.12;   // jump buffer for pressing just before landing
   p.jheld=!!jk;
   if(p.onGround)p.coyote=0.09;else p.coyote-=dt;
   p.jbuf-=dt;
-  if(p.jbuf>0&&p.coyote>0){p.vy=-7.9;p.jbuf=0;p.coyote=0;sfx('jump');}
+  if((p.jbuf>0||jk)&&p.coyote>0){p.vy=-7.9;p.jbuf=0;p.coyote=0;sfx('jump');}  // holding = auto-jump on each landing
   p.vy=Math.min(p.vy+0.38,13);
   if((keys.KeyS||keys.ArrowDown)&&!p.onGround&&p.vy<3)p.vy+=0.5;
   if(p.vy<0)p.apex=Math.min(p.apex,p.y);
@@ -1407,9 +1443,10 @@ function drawDropsLayer(g){
 function drawPlayerLayer(g){
   const p=player;
   if(p.dead)return;
-  const f=!p.onGround?'jump':(Math.abs(p.vx)>0.4?(((p.walk|0)%2)?'walkA':'walkB'):'idle');
+  const f=!p.onGround?'jump':(Math.abs(p.vx)>0.4?['walkA','walkB','walkC','walkD'][(p.walk|0)%4]:'idle');
   const spr=PSprites[f];
-  const x=((p.x-camX))|0,y=((p.y-camY))|0;
+  const bob=(f==='walkB'||f==='walkD')?1:0;   // body rises 1px on the leg-passing frames
+  const x=((p.x-camX))|0,y=(((p.y-camY))-bob)|0;
   g.save();
   if(p.face<0){g.translate(x+p.w,y);g.scale(-1,1);g.drawImage(spr,0,0);if(p.inv>0&&((perfT*14)|0)%2===0){g.globalAlpha=0.5;g.drawImage(PWHITE,0,0);}}
   else{g.drawImage(spr,x,y);if(p.inv>0&&((perfT*14)|0)%2===0){g.globalAlpha=0.5;g.drawImage(PWHITE,x,y);}}
