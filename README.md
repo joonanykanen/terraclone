@@ -23,7 +23,7 @@ A single-file 2D sandbox game inspired by Terraria. Everything — world generat
 - **Tile lighting**: sky light blocked underground, torch radial glow, darkness overlay
 - **Enemies**: slimes (day & night), zombies & bats (night), and the **King Slime** boss (Slime Crown, 500 HP)
 - **Inventory & crafting**: 40-slot grid + hotbar with drag & drop, armor slots, 26 recipes
-- **Procedural audio**: 8 chiptune BGM patterns (per biome & time) + sound effects, all Web Audio — no audio files
+- **Procedural audio**: 10 composed BGM themes — one per scenario: title menu, 3 biomes × day/night, underground, deep cavern, and a King Slime boss theme (with kick drum) — plus sound effects, all Web Audio, no audio files.
 - **3-slot save/load** (localStorage): slot cards with seed/day/playtime, pause-menu saves, F5 quick-save
 
 ![Underground torch lighting](screenshots/underground.png)
@@ -31,6 +31,23 @@ A single-file 2D sandbox game inspired by Terraria. Everything — world generat
 ![Inventory and crafting](screenshots/inventory.png)
 
 For more screenshots, see [screenshots/](screenshots/).
+
+## Soundtrack
+
+All 10 tracks are composed procedurally at runtime (Web Audio, no audio files). Each scenario has its own key, tempo, scale, melody motif, bassline, and (where it fits) pad chord or kick drum, so every zone has a recognizable theme like in Terraria. Music switches automatically with the scenario — boss music overrides the zone, and the title screen has its own menu theme. **M** mutes/unmutes (and announces which track is playing). Rendered previews of all 10 themes (4 bars each, same engine) are in [soundtrack/](soundtrack/).
+
+| # | Track | Feel | How to reach it |
+|---|-------|------|-----------------|
+| 1 | Menu | slow, dreamy arpeggios | Title screen (any click/keypress unlocks audio) |
+| 2 | Forest (Day) | bouncy major-pentatonic | Spawn during the day |
+| 3 | Forest (Night) | sparse minor with soft pad | Wait for nightfall |
+| 4 | Desert (Day) | fast square-wave drive | Walk to the sand dunes |
+| 5 | Desert (Night) | eerie Phrygian ♭2 | Night in the desert |
+| 6 | Snow (Day) | crystalline Dorian bells | Walk to the snow tundra |
+| 7 | Snow (Night) | cold, sparse, dark pad | Night in the tundra |
+| 8 | Underground | moody echo, >6 m deep | Dig a few meters below the surface |
+| 9 | Cavern | abyssal drone, >55 m deep | Mine to the bottom of the world |
+| 10 | King Slime (Boss) | 132 BPM minor gallop + kick | Craft a Slime Crown (15 gel + 5 iron bars) and use it |
 
 Built by [Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B) in the [pi](https://pi.dev) agent harness.
 
