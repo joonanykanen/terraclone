@@ -1478,6 +1478,20 @@ function addLight(sx,sy,R0,max){
    light that made it through the leaves via `carry`, so the trunk's shadow is soft too.) */
 const POROUS=[0,0,0,0,0,0,1,0,0,0,1,0,0,0,0]; // LEAVES, SNOW
 const POROUS_ATT=0.9;
+/* Sky-light model (per column, top-down from the top of the world):
+   - The first opaque solid blocks the column from that row down (`blocked`); porous tiles
+     (leaves/snow) instead attenuate via `carry`, which also feeds the decay below the ground,
+     so a tree casts a soft shadow.
+   - Depth is anchored at the column's ORIGINAL surface (surf[]), never at the view: a tile at
+     depth d below the surface gets amb*carry*(1-d*k) with k = AIR_ATT for open air (a shaft
+     dug from the surface goes dark ~13 tiles down, Terraria-like) and STONE_ATT for solid
+     stone or air under a roof.
+   - Open air AT/ABOVE the original surface is full ambient and marked open (no dark overlay;
+     the sky shows through). Air below it (shafts, craters) gets the overlay.
+   The old version seeded the depth counter from the top of the screen, so underground the top
+   of the view always read as full-ambient "surface", and shaft air (an unblocked column) stayed
+   fully bright and overlay-exempt at any depth. */
+const AIR_ATT=1/13,STONE_ATT=0.13;
 function updateLight(){
   const x0=Math.floor(camX/16)-1,y0=Math.floor(camY/16)-1;
   const amb=0.28+0.72*dayF;
@@ -1485,35 +1499,23 @@ function updateLight(){
   openArr.fill(0);
   for(let sx=0;sx<LW;sx++){
     const tx=x0+sx;
-    let ty=y0-1,d=0,blocked=false,carry=1;
-    if(tx>=0&&tx<W){
-      while(ty>=0&&d<70){
-        const v=world[ty*W+tx];
-        if(TILES[v].solid){
-          if(POROUS[v])carry*=POROUS_ATT;
-          else{blocked=true;break;}
-        }
-        d++;ty--;
+    for(let sy=0;sy<LH&&y0+sy<0;sy++){const i=sy*LW+sx;openArr[i]=1;lightArr[i]=1;}
+    if(tx<0||tx>=W)continue; // off the world's sides: pitch dark
+    const sf=surf[tx];
+    let carry=1,blocked=false;
+    const last=Math.min(H-1,y0+LH-1);
+    for(let ty=0;ty<=last;ty++){
+      const v=world[ty*W+tx],s=TILES[v].solid;
+      if(s){
+        if(POROUS[v])carry*=POROUS_ATT;
+        else blocked=true;
       }
-    }else blocked=true;
-    for(let sy=0;sy<LH;sy++){
-      const yy=y0+sy;
-      const i=sy*LW+sx;
-      if(yy<0){openArr[i]=1;lightArr[i]=1;d=0;carry=1;continue;}
-      if(tx<0||tx>=W||yy>=H){lightArr[i]=0;continue;}
-      const v=world[yy*W+tx];
-      const s=TILES[v].solid;
-      if(!blocked){
-        if(s&&POROUS[v])carry*=POROUS_ATT;
-        lightArr[i]=amb*carry;
-        openArr[i]=s?0:1;
-        if(s&&!POROUS[v]){blocked=true;d=1;}
-        else if(!s)d=Math.min(70,d+1);
-      }else{
-        const l=amb*carry*Math.max(0,1-d*0.13);
-        if(l>lightArr[i])lightArr[i]=l;
-        d=Math.min(70,d+1);
-      }
+      const depth=ty-sf;
+      const k=(s||blocked)?STONE_ATT:AIR_ATT;
+      const l=depth<=0?amb*carry:amb*carry*Math.max(0,1-depth*k);
+      const open=!s&&!blocked&&depth<=0;
+      if(ty>=y0){const i=(ty-y0)*LW+sx;if(l>lightArr[i])lightArr[i]=l;openArr[i]=open?1:0;}
+      if(depth>=14)break; // fully dark from here down (torch/player pass below still applies)
     }
   }
   for(let sx=0;sx<LW;sx++)for(let sy=0;sy<LH;sy++){
