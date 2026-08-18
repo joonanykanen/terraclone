@@ -955,10 +955,49 @@ function makeEntity(type,x,y){
   return e;
 }
 function spawnBoss(){
+  const pcx=player.x+player.w/2;
   const side=Math.random()<0.5?-1:1;
-  const x=clamp(player.x+player.w/2+side*380,80,W*16-80);
-  const s=surf[clamp(Math.floor(x/16),0,W-1)];
-  const e={type:'king',x:x-22,y:s*16-40,w:44,h:32,vx:0,vy:0,t:1.5,touch:0,flash:0,ph:0,onGround:false,hitWall:false,dead:false,face:1,small:false,hp:950,maxhp:950,dmg:44,spitT:2.5,enraged:false,dmgM:1,c1:'#b45ce8',c2:'#6d2f9e'};
+  const ideal=clamp(Math.round((pcx+side*380)/16),8,W-9);
+  const pcol=pcx/16;
+  // find a tree-free landing column: the boss body (44px wide) spans columns
+  // c-1..c+1, and trunks/canopies are solid, so spawning under a crown would
+  // leave the boss perched on the tree (or wedged in it). Expand outward from
+  // the ideal distance, preferred side first; if nothing is clean (dense forest),
+  // take the column with the least tree matter above the body itself.
+  let c=-1,fc=-1,fcTrees=1e9,fcAir=-1;
+  for(let off=0;off<=32;off++){
+    const cands=off===0?[ideal]:[ideal+side*off,ideal-side*off];
+    for(const cand of cands){
+      if(cand<8||cand>W-9)continue;
+      if(Math.abs(cand-pcol)<16)continue;     // keep a real gap (no point-blank spawn)
+      let trees=0,bodyTrees=0;
+      for(let x=cand-2;x<=cand+2;x++)
+        for(let y=Math.max(0,surf[x]-10);y<surf[x];y++){
+          const v=world[y*W+x];
+          if(v===T.WOOD||v===T.LEAVES||v===T.SNOW){
+            trees++;
+            if(x>=cand-1&&x<=cand+1)bodyTrees++;  // trunk/canopy/snow cap over the body
+          }
+        }
+      if(trees===0){c=cand;break;}
+      let air=0;
+      for(let y=surf[cand]-1;y>=0&&air<12;y--)if(world[y*W+cand]===T.AIR)air++;
+      if(bodyTrees<fcTrees||(bodyTrees===fcTrees&&air>fcAir)){fcTrees=bodyTrees;fcAir=air;fc=cand;}
+    }
+    if(c>=0)break;
+  }
+  if(c<0)c=(fc>=0)?fc:ideal;
+  let s=9999;
+  for(let x=c-1;x<=c+1;x++)if(surf[x]<s)s=surf[x];
+  // anchor the spawn to the highest solid under the body (ground — or a canopy
+  // top, if dense forest forced the fallback under a crown): the boss drops in
+  // and lands cleanly on it instead of starting clipped into tiles
+  let top=s;
+  for(let x=c-1;x<=c+1;x++)
+    for(let y=s-20;y>=0;y--)
+      if(TILES[world[y*W+x]].solid){if(y<top)top=y;break;}
+  const x=c*16+8;
+  const e={type:'king',x:x-22,y:top*16-40,w:44,h:32,vx:0,vy:0,t:1.5,touch:0,flash:0,ph:0,onGround:false,hitWall:false,dead:false,face:1,small:false,hp:950,maxhp:950,dmg:44,spitT:2.5,enraged:false,dmgM:1,c1:'#b45ce8',c2:'#6d2f9e'};
   entities.push(e);
   notify('The Slime Crown pulses... the King Slime awakens!');
   notify('It spits gel and smashes the ground. Bring potions!');
