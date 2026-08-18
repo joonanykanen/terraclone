@@ -26,7 +26,7 @@ function check(name, cond, extra) {
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   fs.mkdirSync(PROFILE, { recursive: true });
-  try { execSync('pkill -f "tc_ff_profile" 2>/dev/null || true', { stdio: 'ignore' }); } catch {}
+  try { execSync('pkill -f "Firefox.*--marionette" 2>/dev/null || true', { stdio: 'ignore' }); } catch {}
   await sleep(500);
 
   console.log('launching headless firefox...');

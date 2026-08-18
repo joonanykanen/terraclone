@@ -17,3 +17,4 @@ All scripts take an optional `index.html` path argument (default: repo root).
 - The script sandbox sees `window` properties but **not** top-level `let`/`const` → always go through the `window.TC` debug API.
 - `--height=815` yields a ~730px viewport (1:1 1280×720 canvas); `--height=720` letterboxes to 635px.
 - Real user gestures don't exist in headless: Web Audio state checks should tolerate a suspended `AudioContext`.
+- A **stray marionette Firefox holds port 2828** and every new run silently drives *it* (stale page state, dirty localStorage) instead of dying: the startup `pkill` must match the actual launch line (`pkill -f "Firefox.*--marionette"`), not just the profile-name prefix — a foreign profile (e.g. `/tmp/tc_ff_dbg_*`) slipped through `pkill -f "tc_ff_profile"` once and broke the save suite for hours.
